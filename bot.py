@@ -1,13 +1,16 @@
 import html
 import logging
+import re
 from datetime import datetime
 import pytz
+import requests
 import telebot
 from telebot import types
 from apscheduler.schedulers.background import BackgroundScheduler
 
 BOT_TOKEN = "8814170419:AAHWiLDlZEJ0KXeQzU_hVmQckRlsB6wRi8w"
 USER_CHAT_ID = 780458353
+OCR_API_KEY = "K86575271388957"
 
 TEACHER_LINKS = {
     "литвин": "https://meet.google.com/ait-gnuz-oqo",
@@ -29,9 +32,14 @@ DAYS_MAP = {
     2: "Середа",
     3: "Четвер",
     4: "Пʼятниця",
-    5: "Субота",
-    6: "Неділя"
 }
+
+CALL_TIMES = [
+    {"hour": 9, "minute": 15, "time": "09:15 - 10:30"},
+    {"hour": 10, "minute": 40, "time": "10:40 - 11:55"},
+    {"hour": 12, "minute": 20, "time": "12:20 - 13:35"},
+    {"hour": 13, "minute": 45, "time": "13:45 - 15:00"},
+]
 
 SCHEDULE_DATA = {
     0: [
@@ -95,28 +103,88 @@ def setup_scheduler():
                 args=[item["title"], link]
             )
 
+@bot.message_handler(content_types=["photo"])
+def handle_schedule_photo(message):
+    if message.chat.id != USER_CHAT_ID:
+        return
+
+    temp_msg = bot.reply_to(message, "⏳ Зчитую скріншот і розпізнаю пари...")
+
+    try:
+        file_info = bot.get_file(message.photo[-1].file_id)
+        tg_file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_info.file_path}"
+        img_data = requests.get(tg_file_url).content
+
+        ocr_res = requests.post(
+            "https://api.ocr.space/parse/image",
+            files={"file": ("schedule.jpg", img_data)},
+            data={
+                "apikey": OCR_API_KEY,
+                "language": "ukr",
+                "isTable": True,
+                "OCREngine": 2
+            },
+            timeout=40
+        ).json()
+
+        # Автоматическое удаление временного статусного сообщения
+        try:
+            bot.delete_message(chat_id=message.chat.id, message_id=temp_msg.message_id)
+        except Exception:
+            pass
+
+        if ocr_res.get("IsErroredOnProcessing"):
+            bot.reply_to(message, f"❌ Помилка OCR: {ocr_res.get('ErrorMessage')}")
+            return
+
+        parsed_text = ocr_res["ParsedResults"][0]["ParsedText"]
+        lines = [line.strip() for line in parsed_text.splitlines() if line.strip()]
+
+        found_pairs = []
+        for line in lines:
+            line_lower = line.lower()
+            if any(teacher in line_lower for teacher in TEACHER_LINKS.keys()):
+                found_pairs.append(line)
+
+        if not found_pairs:
+            bot.reply_to(message, "⚠️ Пари не знайдено. Переконайся, що на зображенні чітко видно прізвища викладачів.")
+            return
+
+        pair_idx = 0
+        for day_idx in range(5):
+            SCHEDULE_DATA[day_idx] = []
+            slot_count = 3 if day_idx in [0, 2, 3, 4] else 2
+            for slot in CALL_TIMES[:slot_count]:
+                if pair_idx < len(found_pairs):
+                    SCHEDULE_DATA[day_idx].append({
+                        "hour": slot["hour"],
+                        "minute": slot["minute"],
+                        "time": slot["time"],
+                        "title": found_pairs[pair_idx]
+                    })
+                    pair_idx += 1
+
+        setup_scheduler()
+        bot.reply_to(message, f"✅ Розклад оновлено! Знайдено пар: {len(found_pairs)}.\n\nПеревір оновлення: /week")
+
+    except Exception as e:
+        try:
+            bot.delete_message(chat_id=message.chat.id, message_id=temp_msg.message_id)
+        except Exception:
+            pass
+        bot.reply_to(message, f"❌ Помилка: {e}")
+
 @bot.message_handler(commands=["start"])
 def cmd_start(message):
     bot.reply_to(
         message,
-        "👋 Бот розкладу К-311 запущений!\n\n"
+        "👋 Бот розкладу К-311!\n\n"
         "• /today — пари на сьогодні\n"
         "• /tomorrow — пари на завтра\n"
-        "• /week — розклад на весь тиждень з посиланнями\n"
-        "• /test_alert — надіслати тестовий пуш"
+        "• /week — розклад на весь тиждень з посиланнями\n\n"
+        "📷 <b>Надішли скріншот розкладу</b> — бот автоматично оновить пари на тиждень!",
+        parse_mode="HTML"
     )
-
-@bot.message_handler(commands=["sync"])
-def cmd_sync(message):
-    setup_scheduler()
-    total = sum(len(v) for v in SCHEDULE_DATA.values())
-    bot.reply_to(message, f"🔄 Розклад оновлено! Пар на тиждень: {total}")
-
-@bot.message_handler(commands=["test_alert"])
-def cmd_test_alert(message):
-    sample_title = "Комп'ютерна графіка (л) — Букатов Д.В."
-    sample_link = get_link_for_lesson(sample_title)
-    send_lesson_notification(sample_title, sample_link)
 
 @bot.message_handler(commands=["today"])
 def cmd_today(message):
@@ -166,13 +234,4 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     setup_scheduler()
     scheduler.start()
-    
-    # Моментальная отправка тестового уведомления при старте скрипта
-    sample_title = "Тестове сповіщення: Комп'ютерна графіка (л) — Букатов Д.В."
-    sample_link = get_link_for_lesson(sample_title)
-    try:
-        send_lesson_notification(sample_title, sample_link)
-    except Exception as e:
-        print(f"Помилка відправки тестового пуша: {e}")
-
     bot.infinity_polling()
