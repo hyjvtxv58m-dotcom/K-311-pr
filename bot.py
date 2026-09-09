@@ -79,33 +79,7 @@ def send_lesson_notification(title: str, link: str):
         reply_markup=kb
     )
 
-def setup_scheduler(def setup_scheduler():
-    scheduler.remove_all_jobs()
-    days_codes = {0: "mon", 1: "tue", 2: "wed", 3: "thu", 4: "fri"}
-    for day_num, lessons in SCHEDULE_DATA.items():
-        day_code = days_codes.get(day_num)
-        for item in lessons:
-            link = get_link_for_lesson(item["title"])
-            scheduler.add_job(
-                send_lesson_notification,
-                "cron",
-                day_of_week=day_code,
-                hour=item["hour"],
-                minute=item["minute"],
-                args=[item["title"], link]
-            )
-
-    # ТЕСТОВЫЙ ПУШ НА 02:30
-    test_title = "Комп'ютерна графіка (л) — Букатов Д.В."
-    test_link = get_link_for_lesson(test_title)
-    scheduler.add_job(
-        send_lesson_notification,
-        "cron",
-        hour=2,
-        minute=30,
-        args=[test_title, test_link]
-    )
-):
+def setup_scheduler():
     scheduler.remove_all_jobs()
     days_codes = {0: "mon", 1: "tue", 2: "wed", 3: "thu", 4: "fri"}
     for day_num, lessons in SCHEDULE_DATA.items():
@@ -128,7 +102,8 @@ def cmd_start(message):
         "👋 Бот розкладу К-311 запущений!\n\n"
         "• /today — пари на сьогодні\n"
         "• /tomorrow — пари на завтра\n"
-        "• /week — розклад на весь тиждень з посиланнями"
+        "• /week — розклад на весь тиждень з посиланнями\n"
+        "• /test_alert — надіслати тестовий пуш"
     )
 
 @bot.message_handler(commands=["sync"])
@@ -136,6 +111,12 @@ def cmd_sync(message):
     setup_scheduler()
     total = sum(len(v) for v in SCHEDULE_DATA.values())
     bot.reply_to(message, f"🔄 Розклад оновлено! Пар на тиждень: {total}")
+
+@bot.message_handler(commands=["test_alert"])
+def cmd_test_alert(message):
+    sample_title = "Комп'ютерна графіка (л) — Букатов Д.В."
+    sample_link = get_link_for_lesson(sample_title)
+    send_lesson_notification(sample_title, sample_link)
 
 @bot.message_handler(commands=["today"])
 def cmd_today(message):
@@ -185,4 +166,13 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     setup_scheduler()
     scheduler.start()
+    
+    # Моментальная отправка тестового уведомления при старте скрипта
+    sample_title = "Тестове сповіщення: Комп'ютерна графіка (л) — Букатов Д.В."
+    sample_link = get_link_for_lesson(sample_title)
+    try:
+        send_lesson_notification(sample_title, sample_link)
+    except Exception as e:
+        print(f"Помилка відправки тестового пуша: {e}")
+
     bot.infinity_polling()
