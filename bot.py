@@ -10,7 +10,7 @@ from aiogram.filters import Command
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-BOT_TOKEN = 8814170419:AAHWiLDlZEJ0KXeQzU_hVmQckRlsB6wRi8w
+BOT_TOKEN = "8814170419:AAHWiLDlZEJ0KXeQzU_hVmQckRlsB6wRi8w"
 USER_CHAT_ID = 780458353
 
 SHEET_ID = "1KPQpwM98V8lW-sCGZiWLX5M7NimVKGNbQJENZVZyNHw"
