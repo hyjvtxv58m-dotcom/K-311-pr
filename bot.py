@@ -79,7 +79,33 @@ def send_lesson_notification(title: str, link: str):
         reply_markup=kb
     )
 
-def setup_scheduler():
+def setup_scheduler(def setup_scheduler():
+    scheduler.remove_all_jobs()
+    days_codes = {0: "mon", 1: "tue", 2: "wed", 3: "thu", 4: "fri"}
+    for day_num, lessons in SCHEDULE_DATA.items():
+        day_code = days_codes.get(day_num)
+        for item in lessons:
+            link = get_link_for_lesson(item["title"])
+            scheduler.add_job(
+                send_lesson_notification,
+                "cron",
+                day_of_week=day_code,
+                hour=item["hour"],
+                minute=item["minute"],
+                args=[item["title"], link]
+            )
+
+    # ТЕСТОВЫЙ ПУШ НА 02:30
+    test_title = "Комп'ютерна графіка (л) — Букатов Д.В."
+    test_link = get_link_for_lesson(test_title)
+    scheduler.add_job(
+        send_lesson_notification,
+        "cron",
+        hour=2,
+        minute=30,
+        args=[test_title, test_link]
+    )
+):
     scheduler.remove_all_jobs()
     days_codes = {0: "mon", 1: "tue", 2: "wed", 3: "thu", 4: "fri"}
     for day_num, lessons in SCHEDULE_DATA.items():
