@@ -5,7 +5,7 @@ import telebot
 from telebot import types
 from apscheduler.schedulers.background import BackgroundScheduler
 
-BOT_TOKEN = "8056262450:AAEZW9bX8YfGjVjG3H7g8n_V2pC0kM-m1_Q"
+BOT_TOKEN = "8814170419:AAHWiLDlZEJ0KXeQzU_hVmQckRlsB6wRi8w"
 USER_CHAT_ID = 780458353
 
 TEACHER_LINKS = {
