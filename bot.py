@@ -1,3 +1,4 @@
+import html
 import logging
 from datetime import datetime
 import pytz
@@ -33,26 +34,26 @@ DAYS_MAP = {
 }
 
 SCHEDULE_DATA = {
-    0: [  # Понеділок
+    0: [
         {"hour": 10, "minute": 40, "time": "10:40 - 11:55", "title": "Проектування автономних мереж (пр) — Литвин Д.Т."},
         {"hour": 12, "minute": 20, "time": "12:20 - 13:35", "title": "Комп'ютерна графіка (л) — Букатов Д.В."},
         {"hour": 13, "minute": 45, "time": "13:45 - 15:00", "title": "Інтернет речей та проектування розумного виробництва (л) — Захаренков Д.Ю."},
     ],
-    1: [  # Вівторок
+    1: [
         {"hour": 9,  "minute": 15, "time": "09:15 - 10:30", "title": "Комп'ютерна графіка (пр) — Литвин Д.Т."},
         {"hour": 10, "minute": 40, "time": "10:40 - 11:55", "title": "Комп'ютерні мережі (л) — Левченко С.В."},
     ],
-    2: [  # Середа
+    2: [
         {"hour": 9,  "minute": 15, "time": "09:15 - 10:30", "title": "Об'єктно-орієнтоване програмування (л) — Яровий Р.О."},
         {"hour": 10, "minute": 40, "time": "10:40 - 11:55", "title": "Розробка інтерактивного медіа (л) — Бойко М.М."},
         {"hour": 12, "minute": 20, "time": "12:20 - 13:35", "title": "Комп'ютерні мережі (пр) — Литвин Д.Т."},
     ],
-    3: [  # Четвер
+    3: [
         {"hour": 9,  "minute": 15, "time": "09:15 - 10:30", "title": "ІТ та бізнес-аналітика (л) — Букатов Д.В."},
         {"hour": 10, "minute": 40, "time": "10:40 - 11:55", "title": "Організація та адміністрування баз даних (л) — Гордієнко І.М."},
         {"hour": 12, "minute": 20, "time": "12:20 - 13:35", "title": "Інтернет речей та проектування розумного виробництва (л) — Захаренков Д.Ю."},
     ],
-    4: [  # Пʼятниця
+    4: [
         {"hour": 9,  "minute": 15, "time": "09:15 - 10:30", "title": "Організація та адміністрування баз даних (пр) — Довголуцький І.Р."},
         {"hour": 10, "minute": 40, "time": "10:40 - 11:55", "title": "Проектування автономних мереж (л) — Подвиженко А.В."},
         {"hour": 12, "minute": 20, "time": "12:20 - 13:35", "title": "Об'єктно-орієнтоване програмування (пр) — Довголуцький І.Р."},
@@ -98,17 +99,17 @@ def setup_scheduler():
 def cmd_start(message):
     bot.reply_to(
         message,
-        "👋 Бот розкладу К-311 працює!\n\n"
+        "👋 Бот розкладу К-311 запущений!\n\n"
         "• /today — пари на сьогодні\n"
         "• /tomorrow — пари на завтра\n"
-        "• /week — розклад на весь тиждень"
+        "• /week — розклад на весь тиждень з посиланнями"
     )
 
 @bot.message_handler(commands=["sync"])
 def cmd_sync(message):
     setup_scheduler()
     total = sum(len(v) for v in SCHEDULE_DATA.values())
-    bot.reply_to(message, f"🔄 Розклад оновлено! Усього пар на тиждень: {total}")
+    bot.reply_to(message, f"🔄 Розклад оновлено! Пар на тиждень: {total}")
 
 @bot.message_handler(commands=["today"])
 def cmd_today(message):
@@ -132,23 +133,27 @@ def send_day_schedule(message, day_idx, day_name):
     kb = types.InlineKeyboardMarkup()
     for item in lessons:
         link = get_link_for_lesson(item["title"])
-        text += f"⏰ {item['time']} — {item['title']}\n\n"
-        kb.add(types.InlineKeyboardButton(text=f"👉 {item['time']} Увійти", url=link))
+        service = "Meet" if "meet.google" in link else "Zoom"
+        text += f"⏰ {item['time']} — {item['title']}\n"
+        kb.add(types.InlineKeyboardButton(text=f"👉 {item['time']} Увійти ({service})", url=link))
 
-    bot.reply_to(message, text.strip(), reply_markup=kb)
+    bot.reply_to(message, text, reply_markup=kb)
 
 @bot.message_handler(commands=["week"])
 def cmd_week(message):
     for d_num in range(5):
         d_name = DAYS_MAP[d_num]
         lessons = SCHEDULE_DATA.get(d_num, [])
-        text = f"🗓 {d_name}:\n"
+        text = f"🗓 <b>{d_name}</b>:\n"
         if not lessons:
-            text += "  (пар немає)"
+            text += "  <i>(пар немає)</i>"
         else:
             for l in lessons:
-                text += f"  • {l['time']} — {l['title']}\n"
-        bot.send_message(message.chat.id, text.strip())
+                link = get_link_for_lesson(l["title"])
+                service = "Meet" if "meet.google" in link else "Zoom"
+                escaped_title = html.escape(l["title"])
+                text += f"  • <b>{l['time']}</b> — <a href=\"{link}\">{escaped_title}</a> [<b>{service}</b>]\n"
+        bot.send_message(message.chat.id, text.strip(), parse_mode="HTML", disable_web_page_preview=True)
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
