@@ -1,18 +1,12 @@
-import csv
-import io
 import logging
 from datetime import datetime
 import pytz
-import requests
 import telebot
 from telebot import types
 from apscheduler.schedulers.background import BackgroundScheduler
 
-BOT_TOKEN = "8814170419:AAHWiLDlZEJ0KXeQzU_hVmQckRlsB6wRi8w"
+BOT_TOKEN = "8056262450:AAEZW9bX8YfGjVjG3H7g8n_V2pC0kM-m1_Q"
 USER_CHAT_ID = 780458353
-
-SHEET_ID = "1GVh_6jnAoTsp-U8c0xvV85zEdgP8sgIJwEMHWdaSVno"
-SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv"
 
 TEACHER_LINKS = {
     "литвин": "https://meet.google.com/ait-gnuz-oqo",
@@ -28,22 +22,42 @@ TEACHER_LINKS = {
 
 DEFAULT_MEET = "https://meet.google.com/"
 
-CALL_TIMES = [
-    {"hour": 9, "minute": 15},
-    {"hour": 10, "minute": 40},
-    {"hour": 12, "minute": 20},
-    {"hour": 13, "minute": 45},
-]
-
 DAYS_MAP = {
     0: "Понеділок",
     1: "Вівторок",
     2: "Середа",
     3: "Четвер",
-    4: "Пʼятниця"
+    4: "Пʼятниця",
+    5: "Субота",
+    6: "Неділя"
 }
 
-weekly_schedule = {}
+SCHEDULE_DATA = {
+    0: [  # Понеділок
+        {"hour": 10, "minute": 40, "time": "10:40 - 11:55", "title": "Проектування автономних мереж (пр) — Литвин Д.Т."},
+        {"hour": 12, "minute": 20, "time": "12:20 - 13:35", "title": "Комп'ютерна графіка (л) — Букатов Д.В."},
+        {"hour": 13, "minute": 45, "time": "13:45 - 15:00", "title": "Інтернет речей та проектування розумного виробництва (л) — Захаренков Д.Ю."},
+    ],
+    1: [  # Вівторок
+        {"hour": 9,  "minute": 15, "time": "09:15 - 10:30", "title": "Комп'ютерна графіка (пр) — Литвин Д.Т."},
+        {"hour": 10, "minute": 40, "time": "10:40 - 11:55", "title": "Комп'ютерні мережі (л) — Левченко С.В."},
+    ],
+    2: [  # Середа
+        {"hour": 9,  "minute": 15, "time": "09:15 - 10:30", "title": "Об'єктно-орієнтоване програмування (л) — Яровий Р.О."},
+        {"hour": 10, "minute": 40, "time": "10:40 - 11:55", "title": "Розробка інтерактивного медіа (л) — Бойко М.М."},
+        {"hour": 12, "minute": 20, "time": "12:20 - 13:35", "title": "Комп'ютерні мережі (пр) — Литвин Д.Т."},
+    ],
+    3: [  # Четвер
+        {"hour": 9,  "minute": 15, "time": "09:15 - 10:30", "title": "ІТ та бізнес-аналітика (л) — Букатов Д.В."},
+        {"hour": 10, "minute": 40, "time": "10:40 - 11:55", "title": "Організація та адміністрування баз даних (л) — Гордієнко І.М."},
+        {"hour": 12, "minute": 20, "time": "12:20 - 13:35", "title": "Інтернет речей та проектування розумного виробництва (л) — Захаренков Д.Ю."},
+    ],
+    4: [  # Пʼятниця
+        {"hour": 9,  "minute": 15, "time": "09:15 - 10:30", "title": "Організація та адміністрування баз даних (пр) — Довголуцький І.Р."},
+        {"hour": 10, "minute": 40, "time": "10:40 - 11:55", "title": "Проектування автономних мереж (л) — Подвиженко А.В."},
+        {"hour": 12, "minute": 20, "time": "12:20 - 13:35", "title": "Об'єктно-орієнтоване програмування (пр) — Довголуцький І.Р."},
+    ]
+}
 
 bot = telebot.TeleBot(BOT_TOKEN)
 scheduler = BackgroundScheduler(timezone=pytz.timezone("Europe/Kyiv"))
@@ -64,93 +78,37 @@ def send_lesson_notification(title: str, link: str):
         reply_markup=kb
     )
 
-def sync_schedule():
-    global weekly_schedule
-    try:
-        res = requests.get(SHEET_URL, timeout=15)
-        res.encoding = "utf-8"
-        raw_text = res.text
-
-        if "<!doctype html" in raw_text.lower() or "google.com/accounts" in raw_text:
-            return "⚠️ Таблиця все ще закрита в налаштуваннях Google. Відкрий доступ усім за посиланням."
-
-        reader = csv.reader(io.StringIO(raw_text))
-        rows = [r for r in reader if any(cell.strip() for cell in r)]
-        
-        if not rows:
-            return "Таблиця порожня."
-
-        # Пошук колонки К-311
-        target_col_idx = None
-        for r in rows[:4]:
-            for idx, cell in enumerate(r):
-                c = cell.lower().replace(" ", "")
-                if ("3к" in c and "фбк" in c) or "к-311" in c or "k-311" in c:
-                    target_col_idx = idx
-                    break
-            if target_col_idx is not None:
-                break
-
-        if target_col_idx is None:
-            target_col_idx = 1
-
-        lessons = []
-        for r in rows[1:]:
-            if len(r) > target_col_idx:
-                val = r[target_col_idx].strip()
-                if val and not any(js in val for js in ["function", "window.", "var ", "return ", ".concat", "{", "}"]):
-                    lessons.append(val)
-                else:
-                    lessons.append("")
-
-        scheduler.remove_all_jobs()
-        scheduler.add_job(sync_schedule, "cron", day_of_week="sun", hour=21, minute=0)
-
-        weekly_schedule.clear()
-        lesson_idx = 0
-        days_codes = ["mon", "tue", "wed", "thu", "fri"]
-
-        for day_num, day_code in enumerate(days_codes):
-            weekly_schedule[day_num] = []
-            for t in CALL_TIMES:
-                title = lessons[lesson_idx] if lesson_idx < len(lessons) else ""
-                lesson_idx += 1
-                if title and title != "-":
-                    link = get_link_for_lesson(title)
-                    weekly_schedule[day_num].append({
-                        "time": f"{t['hour']:02d}:{t['minute']:02d}",
-                        "title": title,
-                        "link": link
-                    })
-                    scheduler.add_job(
-                        send_lesson_notification,
-                        "cron",
-                        day_of_week=day_code,
-                        hour=t["hour"],
-                        minute=t["minute"],
-                        args=[title, link]
-                    )
-
-        total = sum(len(v) for v in weekly_schedule.values())
-        return f"Успішно! Знайдено пар: {total}"
-    except Exception as e:
-        return f"Помилка: {e}"
+def setup_scheduler():
+    scheduler.remove_all_jobs()
+    days_codes = {0: "mon", 1: "tue", 2: "wed", 3: "thu", 4: "fri"}
+    for day_num, lessons in SCHEDULE_DATA.items():
+        day_code = days_codes.get(day_num)
+        for item in lessons:
+            link = get_link_for_lesson(item["title"])
+            scheduler.add_job(
+                send_lesson_notification,
+                "cron",
+                day_of_week=day_code,
+                hour=item["hour"],
+                minute=item["minute"],
+                args=[item["title"], link]
+            )
 
 @bot.message_handler(commands=["start"])
 def cmd_start(message):
     bot.reply_to(
         message,
-        "👋 Бот розкладу К-311 запущений!\n\n"
+        "👋 Бот розкладу К-311 працює!\n\n"
         "• /today — пари на сьогодні\n"
         "• /tomorrow — пари на завтра\n"
-        "• /week — розклад на весь тиждень\n"
-        "• /sync — оновити розклад з Google Таблиці"
+        "• /week — розклад на весь тиждень"
     )
 
 @bot.message_handler(commands=["sync"])
 def cmd_sync(message):
-    res_text = sync_schedule()
-    bot.reply_to(message, f"🔄 {res_text}")
+    setup_scheduler()
+    total = sum(len(v) for v in SCHEDULE_DATA.values())
+    bot.reply_to(message, f"🔄 Розклад оновлено! Усього пар на тиждень: {total}")
 
 @bot.message_handler(commands=["today"])
 def cmd_today(message):
@@ -165,7 +123,7 @@ def cmd_tomorrow(message):
     send_day_schedule(message, t_idx, DAYS_MAP.get(t_idx, "Завтра"))
 
 def send_day_schedule(message, day_idx, day_name):
-    lessons = weekly_schedule.get(day_idx, [])
+    lessons = SCHEDULE_DATA.get(day_idx, [])
     if not lessons:
         bot.reply_to(message, f"🎉 {day_name}: пар немає!")
         return
@@ -173,31 +131,27 @@ def send_day_schedule(message, day_idx, day_name):
     text = f"📋 Пари на {day_name}:\n\n"
     kb = types.InlineKeyboardMarkup()
     for item in lessons:
-        text += f"⏰ {item['time']} — {item['title']}\n"
-        kb.add(types.InlineKeyboardButton(text=f"👉 {item['time']} Увійти", url=item['link']))
+        link = get_link_for_lesson(item["title"])
+        text += f"⏰ {item['time']} — {item['title']}\n\n"
+        kb.add(types.InlineKeyboardButton(text=f"👉 {item['time']} Увійти", url=link))
 
-    bot.reply_to(message, text, reply_markup=kb)
+    bot.reply_to(message, text.strip(), reply_markup=kb)
 
 @bot.message_handler(commands=["week"])
 def cmd_week(message):
-    total = sum(len(v) for v in weekly_schedule.values())
-    if total == 0:
-        bot.reply_to(message, "Поки що розклад порожній. Надішли /sync.")
-        return
-
     for d_num in range(5):
         d_name = DAYS_MAP[d_num]
-        lessons = weekly_schedule.get(d_num, [])
+        lessons = SCHEDULE_DATA.get(d_num, [])
         text = f"🗓 {d_name}:\n"
         if not lessons:
-            text += "  (пар немає)\n"
+            text += "  (пар немає)"
         else:
             for l in lessons:
                 text += f"  • {l['time']} — {l['title']}\n"
-        bot.send_message(message.chat.id, text)
+        bot.send_message(message.chat.id, text.strip())
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
+    setup_scheduler()
     scheduler.start()
-    sync_schedule()
     bot.infinity_polling()
