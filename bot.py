@@ -120,14 +120,13 @@ def handle_schedule_photo(message):
             files={"file": ("schedule.jpg", img_data)},
             data={
                 "apikey": OCR_API_KEY,
-                "language": "ukr",
+                "language": "uk",
                 "isTable": True,
                 "OCREngine": 2
             },
             timeout=40
         ).json()
 
-        # Автоматическое удаление временного статусного сообщения
         try:
             bot.delete_message(chat_id=message.chat.id, message_id=temp_msg.message_id)
         except Exception:
