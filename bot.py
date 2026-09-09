@@ -12,7 +12,7 @@ BOT_TOKEN = "8814170419:AAHWiLDlZEJ0KXeQzU_hVmQckRlsB6wRi8w"
 USER_CHAT_ID = 780458353
 
 SHEET_ID = "1KPQpwM98V8lW-sCGZiWLX5M7NimVKGNbQJENZVZyNHw"
-SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid=240436523"
+SHEET_URL = f"https://docs.google.com/spreadsheets/d/1-GXO6fGHpQynrfuTj9UnJaX4NkaOvKKoqR9Cii1UuZo/edit?usp=drivesdk"
 
 TEACHER_LINKS = {
     "литвин": "https://meet.google.com/ait-gnuz-oqo",
