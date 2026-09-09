@@ -11,8 +11,8 @@ from apscheduler.schedulers.background import BackgroundScheduler
 BOT_TOKEN = "8814170419:AAHWiLDlZEJ0KXeQzU_hVmQckRlsB6wRi8w"
 USER_CHAT_ID = 780458353
 
-SHEET_ID = "1KPQpwM98V8lW-sCGZiWLX5M7NimVKGNbQJENZVZyNHw"
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1-GXO6fGHpQynrfuTj9UnJaX4NkaOvKKoqR9Cii1UuZo/edit?usp=drivesdk"
+SHEET_ID = "1GVh_6jnAoTsp-U8c0xvV85zEdgP8sgIJwEMHWdaSVno"
+SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv"
 
 TEACHER_LINKS = {
     "литвин": "https://meet.google.com/ait-gnuz-oqo",
@@ -40,9 +40,7 @@ DAYS_MAP = {
     1: "Вівторок",
     2: "Середа",
     3: "Четвер",
-    4: "Пʼятниця",
-    5: "Субота",
-    6: "Неділя"
+    4: "Пʼятниця"
 }
 
 weekly_schedule = {}
@@ -59,42 +57,51 @@ def get_link_for_lesson(lesson_text: str) -> str:
 
 def send_lesson_notification(title: str, link: str):
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton(text="🚀 Войти в пару", url=link))
+    kb.add(types.InlineKeyboardButton(text="🚀 Увійти в пару", url=link))
     bot.send_message(
         chat_id=USER_CHAT_ID,
-        text=f"🔔 <b>Пара началась!</b>\n\n📚 {title}",
-        reply_markup=kb,
-        parse_mode="HTML"
+        text=f"🔔 Пара розпочалася!\n\n📚 {title}",
+        reply_markup=kb
     )
 
 def sync_schedule():
     global weekly_schedule
     try:
-        res = requests.get(SHEET_URL, timeout=10)
-        res.encoding = 'utf-8'
-        reader = csv.reader(io.StringIO(res.text))
-        rows = list(reader)
+        res = requests.get(SHEET_URL, timeout=15)
+        res.encoding = "utf-8"
+        raw_text = res.text
+
+        if "<!doctype html" in raw_text.lower() or "google.com/accounts" in raw_text:
+            return "⚠️ Таблиця все ще закрита в налаштуваннях Google. Відкрий доступ усім за посиланням."
+
+        reader = csv.reader(io.StringIO(raw_text))
+        rows = [r for r in reader if any(cell.strip() for cell in r)]
         
         if not rows:
-            return "Таблиця порожня"
+            return "Таблиця порожня."
 
-        header = rows[0]
+        # Пошук колонки К-311
         target_col_idx = None
-        for idx, col_name in enumerate(header):
-            col_clean = col_name.lower().replace(" ", "")
-            if "3к" in col_clean and "фбк" in col_clean:
-                target_col_idx = idx
+        for r in rows[:4]:
+            for idx, cell in enumerate(r):
+                c = cell.lower().replace(" ", "")
+                if ("3к" in c and "фбк" in c) or "к-311" in c or "k-311" in c:
+                    target_col_idx = idx
+                    break
+            if target_col_idx is not None:
                 break
-        
+
         if target_col_idx is None:
-            # пробуем взять 2-ю колонку, если заголовок объединённый
             target_col_idx = 1
 
         lessons = []
         for r in rows[1:]:
             if len(r) > target_col_idx:
                 val = r[target_col_idx].strip()
-                lessons.append(val)
+                if val and not any(js in val for js in ["function", "window.", "var ", "return ", ".concat", "{", "}"]):
+                    lessons.append(val)
+                else:
+                    lessons.append("")
 
         scheduler.remove_all_jobs()
         scheduler.add_job(sync_schedule, "cron", day_of_week="sun", hour=21, minute=0)
@@ -108,7 +115,6 @@ def sync_schedule():
             for t in CALL_TIMES:
                 title = lessons[lesson_idx] if lesson_idx < len(lessons) else ""
                 lesson_idx += 1
-                
                 if title and title != "-":
                     link = get_link_for_lesson(title)
                     weekly_schedule[day_num].append({
@@ -125,12 +131,10 @@ def sync_schedule():
                         args=[title, link]
                     )
 
-        logging.info("Синхронизация завершена успешно!")
         total = sum(len(v) for v in weekly_schedule.values())
-        return f"Успішно! Знайдено пар на тиждень: {total}"
+        return f"Успішно! Знайдено пар: {total}"
     except Exception as e:
-        logging.error(f"Помилка: {e}")
-        return f"Помилка синхронізації: {e}"
+        return f"Помилка: {e}"
 
 @bot.message_handler(commands=["start"])
 def cmd_start(message):
@@ -140,7 +144,7 @@ def cmd_start(message):
         "• /today — пари на сьогодні\n"
         "• /tomorrow — пари на завтра\n"
         "• /week — розклад на весь тиждень\n"
-        "• /sync — оновити з Google Таблиці"
+        "• /sync — оновити розклад з Google Таблиці"
     )
 
 @bot.message_handler(commands=["sync"])
@@ -161,38 +165,36 @@ def cmd_tomorrow(message):
     send_day_schedule(message, t_idx, DAYS_MAP.get(t_idx, "Завтра"))
 
 def send_day_schedule(message, day_idx, day_name):
-    if day_idx not in weekly_schedule or not weekly_schedule[day_idx]:
-        bot.reply_to(message, f"🎉 <b>{day_name}</b>: пар немає!", parse_mode="HTML")
+    lessons = weekly_schedule.get(day_idx, [])
+    if not lessons:
+        bot.reply_to(message, f"🎉 {day_name}: пар немає!")
         return
 
-    text = f"📋 <b>Пари на {day_name}:</b>\n\n"
+    text = f"📋 Пари на {day_name}:\n\n"
     kb = types.InlineKeyboardMarkup()
-    for item in weekly_schedule[day_idx]:
-        text += f"⏰ <b>{item['time']}</b> — {item['title']}\n"
-        kb.add(types.InlineKeyboardButton(text=f"👉 {item['time']} {item['title'][:20]}...", url=item['link']))
+    for item in lessons:
+        text += f"⏰ {item['time']} — {item['title']}\n"
+        kb.add(types.InlineKeyboardButton(text=f"👉 {item['time']} Увійти", url=item['link']))
 
-    bot.reply_to(message, text, reply_markup=kb, parse_mode="HTML")
+    bot.reply_to(message, text, reply_markup=kb)
 
 @bot.message_handler(commands=["week"])
 def cmd_week(message):
     total = sum(len(v) for v in weekly_schedule.values())
     if total == 0:
-        bot.reply_to(message, "Поки що розклад порожній. Спробуй /sync.")
+        bot.reply_to(message, "Поки що розклад порожній. Надішли /sync.")
         return
 
-    text = "🗓 <b>Розклад на тиждень:</b>\n\n"
     for d_num in range(5):
         d_name = DAYS_MAP[d_num]
-        text += f"<b>{d_name}:</b>\n"
-        day_lessons = weekly_schedule.get(d_num, [])
-        if not day_lessons:
-            text += "  <i>Пар немає</i>\n"
+        lessons = weekly_schedule.get(d_num, [])
+        text = f"🗓 {d_name}:\n"
+        if not lessons:
+            text += "  (пар немає)\n"
         else:
-            for l in day_lessons:
+            for l in lessons:
                 text += f"  • {l['time']} — {l['title']}\n"
-        text += "\n"
-
-    bot.reply_to(message, text, parse_mode="HTML")
+        bot.send_message(message.chat.id, text)
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
