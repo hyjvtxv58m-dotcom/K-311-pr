@@ -115,6 +115,12 @@ def handle_schedule_photo(message):
         tg_file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_info.file_path}"
         img_data = requests.get(tg_file_url).content
 
+        # Удаляем само фото со скриншотом из чата
+        try:
+            bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+        except Exception:
+            pass
+
         ocr_res = requests.post(
             "https://api.ocr.space/parse/image",
             files={"file": ("schedule.jpg", img_data)},
@@ -127,13 +133,14 @@ def handle_schedule_photo(message):
             timeout=40
         ).json()
 
+        # Удаляем временное статусное сообщение
         try:
             bot.delete_message(chat_id=message.chat.id, message_id=temp_msg.message_id)
         except Exception:
             pass
 
         if ocr_res.get("IsErroredOnProcessing"):
-            bot.reply_to(message, f"❌ Помилка OCR: {ocr_res.get('ErrorMessage')}")
+            bot.send_message(message.chat.id, f"❌ Помилка OCR: {ocr_res.get('ErrorMessage')}")
             return
 
         parsed_text = ocr_res["ParsedResults"][0]["ParsedText"]
@@ -146,7 +153,7 @@ def handle_schedule_photo(message):
                 found_pairs.append(line)
 
         if not found_pairs:
-            bot.reply_to(message, "⚠️ Пари не знайдено. Переконайся, що на зображенні чітко видно прізвища викладачів.")
+            bot.send_message(message.chat.id, "⚠️ Пари не знайдено. Переконайся, що на зображенні чітко видно прізвища викладачів.")
             return
 
         pair_idx = 0
@@ -164,14 +171,14 @@ def handle_schedule_photo(message):
                     pair_idx += 1
 
         setup_scheduler()
-        bot.reply_to(message, f"✅ Розклад оновлено! Знайдено пар: {len(found_pairs)}.\n\nПеревір оновлення: /week")
+        bot.send_message(message.chat.id, f"✅ Розклад оновлено! Знайдено пар: {len(found_pairs)}.\n\nПеревір оновлення: /week")
 
     except Exception as e:
         try:
             bot.delete_message(chat_id=message.chat.id, message_id=temp_msg.message_id)
         except Exception:
             pass
-        bot.reply_to(message, f"❌ Помилка: {e}")
+        bot.send_message(message.chat.id, f"❌ Помилка: {e}")
 
 @bot.message_handler(commands=["start"])
 def cmd_start(message):
@@ -181,7 +188,7 @@ def cmd_start(message):
         "• /today — пари на сьогодні\n"
         "• /tomorrow — пари на завтра\n"
         "• /week — розклад на весь тиждень з посиланнями\n\n"
-        "📷 <b>Надішли скріншот розкладу</b> — бот автоматично оновить пари на тиждень!",
+        "📷 <b>Надішли скріншот розкладу</b> — бот розпізнає пари, видалить скрін і оновить розклад!",
         parse_mode="HTML"
     )
 
