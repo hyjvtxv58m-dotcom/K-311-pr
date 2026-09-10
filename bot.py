@@ -16,7 +16,7 @@ BOT_TOKEN = "8814170419:AAHWiLDlZEJ0KXeQzU_hVmQckRlsB6wRi8w"
 USER_CHAT_ID = 780458353
 OCR_API_KEY = "K86575271388957"
 
-# Сервер для поддержания статуса Live на Render
+# Сервер для Render
 class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -152,6 +152,18 @@ SCHEDULE_DATA = {
 bot = telebot.TeleBot(BOT_TOKEN)
 scheduler = BackgroundScheduler(timezone=pytz.timezone("Europe/Kyiv"))
 
+# Регистрация команд для появления подсказок при вводе "/" и в кнопке "Меню"
+try:
+    bot.set_my_commands([
+        types.BotCommand("now", "Поточна пара або перерва"),
+        types.BotCommand("today", "Пари на сьогодні"),
+        types.BotCommand("tomorrow", "Пари на завтра"),
+        types.BotCommand("week", "Розклад на весь тиждень"),
+        types.BotCommand("start", "Головне меню")
+    ])
+except Exception as e:
+    logging.warning(f"Error registering commands: {e}")
+
 last_bot_messages = {}
 
 def safe_delete(chat_id, msg_id):
@@ -191,14 +203,11 @@ def get_main_keyboard():
     return markup
 
 def send_lesson_notification(title: str, link: str, service: str):
-    kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton(text=f"🚀 Увійти в {service}", url=link))
-    
     text = (
         "🚨 <b>УВАГА! ПАРА РОЗПОЧАЛАСЯ</b> 🚨\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
         f"📍 <b>Дисципліна:</b>\n<code>{html.escape(title)}</code>\n\n"
-        f"🔗 <b>Платформа:</b> {service}\n"
+        f"🔗 <a href=\"{link}\"><b>🚀 Увійти в {service}</b></a>\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
         "⚡️ <i>Підключайся прямо зараз!</i>"
     )
@@ -206,7 +215,8 @@ def send_lesson_notification(title: str, link: str, service: str):
         chat_id=USER_CHAT_ID,
         text=text,
         parse_mode="HTML",
-        reply_markup=kb
+        disable_web_page_preview=True,
+        reply_markup=get_main_keyboard()
     )
 
 def setup_scheduler():
@@ -258,7 +268,7 @@ def identify_lesson_details(block_text: str, teacher_key: str):
 def parse_and_update(message, file_id):
     safe_delete(message.chat.id, message.message_id)
     clear_previous_messages(message.chat.id)
-    temp_msg = bot.send_message(message.chat.id, "⏳ <b>Аналізую розклад зі скріншота...</b>", parse_mode="HTML")
+    temp_msg = bot.send_message(message.chat.id, "⏳ <b>Аналізую розклад зі скріншота...</b>", parse_mode="HTML", reply_markup=get_main_keyboard())
     
     try:
         f_info = bot.get_file(file_id)
@@ -351,12 +361,12 @@ def cmd_start(message):
     start_text = (
         "🔥 <b>АСИСТЕНТ РОЗКЛАДУ ГРУПИ К-311</b> 🔥\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
-        "🚀 <b>Швидкі кнопки:</b>\n"
-        "├ 🔴 <b>Зараз йде</b> — активна пара або перерва\n"
-        "├ 🟡 <b>Сьогодні</b> — розклад на день\n"
-        "├ 🟠 <b>Завтра</b> — пари на завтра\n"
-        "├ 🗓 <b>Весь тиждень</b> — повний графік\n"
-        "└ 📸 <b>Оновити розклад</b> — завантажити свіжий файл\n"
+        "🚀 <b>Швидкі команди:</b>\n"
+        "├ 🔴 <b>/now</b> — активна пара або скільки до наступної\n"
+        "├ 🟡 <b>/today</b> — пари на сьогодні\n"
+        "├ 🟠 <b>/tomorrow</b> — пари на завтра\n"
+        "├ 🗓 <b>/week</b> — повний розклад на тиждень\n"
+        "└ 📸 <b>Оновити розклад</b> — завантажити новий файл\n"
         "━━━━━━━━━━━━━━━━━━━━"
     )
     sent = bot.send_message(message.chat.id, start_text, parse_mode="HTML", reply_markup=get_main_keyboard())
@@ -405,13 +415,11 @@ def cmd_now(message):
             "🔴 <b>ЗАРАЗ ІДЕ ПАРА</b> 🔴\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
             f"⏰ <code>{lesson['time']}</code> (залишилось {mins_left} хв)\n"
-            f"📌 <b>{escaped_title}</b>\n"
-            f"🔗 Платформа: <i>{service}</i>\n"
+            f"📌 <b>{escaped_title}</b>\n\n"
+            f"👉 <a href=\"{lesson['link']}\"><b>🚀 Увійти в {service}</b></a>\n"
             "━━━━━━━━━━━━━━━━━━━━"
         )
-        kb = types.InlineKeyboardMarkup()
-        kb.add(types.InlineKeyboardButton(text=f"🚀 Увійти в {service}", url=lesson["link"]))
-        sent = bot.send_message(message.chat.id, text, parse_mode="HTML", reply_markup=kb)
+        sent = bot.send_message(message.chat.id, text, parse_mode="HTML", disable_web_page_preview=True, reply_markup=get_main_keyboard())
         track_message(message.chat.id, sent.message_id)
 
     elif next_lesson:
@@ -424,13 +432,11 @@ def cmd_now(message):
             "━━━━━━━━━━━━━━━━━━━━\n"
             f"🔜 <b>Наступна пара через {mins_before} хв:</b>\n"
             f"⏰ <code>{lesson['time']}</code>\n"
-            f"📌 <b>{escaped_title}</b>\n"
-            f"🔗 Платформа: <i>{service}</i>\n"
+            f"📌 <b>{escaped_title}</b>\n\n"
+            f"👉 <a href=\"{lesson['link']}\"><b>🔗 Підготуватися до {service}</b></a>\n"
             "━━━━━━━━━━━━━━━━━━━━"
         )
-        kb = types.InlineKeyboardMarkup()
-        kb.add(types.InlineKeyboardButton(text=f"👉 Підготуватися • {service}", url=lesson["link"]))
-        sent = bot.send_message(message.chat.id, text, parse_mode="HTML", reply_markup=kb)
+        sent = bot.send_message(message.chat.id, text, parse_mode="HTML", disable_web_page_preview=True, reply_markup=get_main_keyboard())
         track_message(message.chat.id, sent.message_id)
 
     else:
@@ -467,19 +473,17 @@ def send_day_schedule(chat_id, day_idx, day_name):
         return
 
     text = f"📍 <b>РОЗКЛАД: {day_name.upper()}</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
-    kb = types.InlineKeyboardMarkup()
     for item in lessons:
         escaped_title = html.escape(item["title"])
         service = item["service"]
         text += (
             f"⏰ <code>{item['time']}</code>\n"
             f"📌 <b>{escaped_title}</b>\n"
-            f"🔗 Платформа: <i>{service}</i>\n"
+            f"🔗 <a href=\"{item['link']}\">👉 <b>Увійти в {service}</b></a>\n"
             "──────────────────\n"
         )
-        kb.add(types.InlineKeyboardButton(text=f"👉 {item['time']} • Увійти в {service}", url=item["link"]))
 
-    sent = bot.send_message(chat_id, text, parse_mode="HTML", reply_markup=kb)
+    sent = bot.send_message(chat_id, text, parse_mode="HTML", disable_web_page_preview=True, reply_markup=get_main_keyboard())
     track_message(chat_id, sent.message_id)
 
 @bot.message_handler(commands=["week"])
@@ -500,8 +504,7 @@ def cmd_week(message):
                 escaped_title = html.escape(l["title"])
                 text += f"⏰ <code>{l['time']}</code> ➔ <a href=\"{l['link']}\">{escaped_title}</a> [<b>{service}</b>]\n"
         
-        reply_kb = get_main_keyboard() if d_num == 4 else None
-        sent = bot.send_message(message.chat.id, text.strip(), parse_mode="HTML", disable_web_page_preview=True, reply_markup=reply_kb)
+        sent = bot.send_message(message.chat.id, text.strip(), parse_mode="HTML", disable_web_page_preview=True, reply_markup=get_main_keyboard())
         track_message(message.chat.id, sent.message_id)
 
 @bot.message_handler(func=lambda msg: msg.text in ["🔴 Зараз йде", "🟡 Сьогодні", "🟠 Завтра", "🗓 Весь тиждень", "📸 Оновити розклад (фото)"])
@@ -522,7 +525,7 @@ def handle_menu_buttons(message):
             "━━━━━━━━━━━━━━━━━━━━\n"
             "1. Натисни на <b>скріпку 📎</b> біля поля вводу.\n"
             "2. Обери скріншот або файл із розкладом.\n"
-            "3. Бот розпізнає пари та автоматично оновить базу!"
+            "3. Бот розпізнає пари та оновить базу!"
         )
         sent = bot.send_message(message.chat.id, instruction, parse_mode="HTML", reply_markup=get_main_keyboard())
         track_message(message.chat.id, sent.message_id)
