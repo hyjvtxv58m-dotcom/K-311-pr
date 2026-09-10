@@ -152,7 +152,6 @@ SCHEDULE_DATA = {
 bot = telebot.TeleBot(BOT_TOKEN)
 scheduler = BackgroundScheduler(timezone=pytz.timezone("Europe/Kyiv"))
 
-# Хранилище id отправленных сообщений для автоматической зачистки
 last_bot_messages = {}
 
 def safe_delete(chat_id, msg_id):
@@ -179,7 +178,7 @@ def track_message(chat_id, msg_id):
     last_bot_messages[chat_id].append(msg_id)
 
 def get_main_keyboard():
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2, is_persistent=True)
     btn_now = types.KeyboardButton("🔴 Зараз йде")
     btn_today = types.KeyboardButton("🟡 Сьогодні")
     btn_tomorrow = types.KeyboardButton("🟠 Завтра")
@@ -257,8 +256,8 @@ def identify_lesson_details(block_text: str, teacher_key: str):
     }
 
 def parse_and_update(message, file_id):
-    # Удаляем сообщение с отправленным скриншотом/файлом
     safe_delete(message.chat.id, message.message_id)
+    clear_previous_messages(message.chat.id)
     temp_msg = bot.send_message(message.chat.id, "⏳ <b>Аналізую розклад зі скріншота...</b>", parse_mode="HTML")
     
     try:
@@ -327,7 +326,6 @@ def parse_and_update(message, file_id):
             parse_mode="HTML",
             reply_markup=get_main_keyboard()
         )
-        # Уведомление об успешном обновлении автоматически удалится через 5 секунд
         delayed_delete(message.chat.id, success_msg.message_id, 5)
 
     except Exception as e:
@@ -502,7 +500,8 @@ def cmd_week(message):
                 escaped_title = html.escape(l["title"])
                 text += f"⏰ <code>{l['time']}</code> ➔ <a href=\"{l['link']}\">{escaped_title}</a> [<b>{service}</b>]\n"
         
-        sent = bot.send_message(message.chat.id, text.strip(), parse_mode="HTML", disable_web_page_preview=True)
+        reply_kb = get_main_keyboard() if d_num == 4 else None
+        sent = bot.send_message(message.chat.id, text.strip(), parse_mode="HTML", disable_web_page_preview=True, reply_markup=reply_kb)
         track_message(message.chat.id, sent.message_id)
 
 @bot.message_handler(func=lambda msg: msg.text in ["🔴 Зараз йде", "🟡 Сьогодні", "🟠 Завтра", "🗓 Весь тиждень", "📸 Оновити розклад (фото)"])
@@ -517,14 +516,16 @@ def handle_menu_buttons(message):
         cmd_week(message)
     elif message.text == "📸 Оновити розклад (фото)":
         safe_delete(message.chat.id, message.message_id)
+        clear_previous_messages(message.chat.id)
         instruction = (
-            "📸 <b>ОНОВЛЕННЯ РОЗКЛАДУ:</b>\n"
+            "📸 <b>НАДІШЛИ СКРІНШОТ РОЗКЛАДУ:</b>\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
-            "Надішли сюди новий скріншот або файл розкладу через 📎.\n"
-            "<i>(Повідомлення з файлом автоматично видалиться після розпізнавання)</i>"
+            "1. Натисни на <b>скріпку 📎</b> біля поля вводу.\n"
+            "2. Обери скріншот або файл із розкладом.\n"
+            "3. Бот розпізнає пари та автоматично оновить базу!"
         )
-        tip = bot.send_message(message.chat.id, instruction, parse_mode="HTML")
-        delayed_delete(message.chat.id, tip.message_id, 8)
+        sent = bot.send_message(message.chat.id, instruction, parse_mode="HTML", reply_markup=get_main_keyboard())
+        track_message(message.chat.id, sent.message_id)
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
