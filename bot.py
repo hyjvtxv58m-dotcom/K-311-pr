@@ -1,6 +1,8 @@
 import html
 import logging
-import re
+import os
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime
 import pytz
 import requests
@@ -11,6 +13,19 @@ from apscheduler.schedulers.background import BackgroundScheduler
 BOT_TOKEN = "8814170419:AAHWiLDlZEJ0KXeQzU_hVmQckRlsB6wRi8w"
 USER_CHAT_ID = 780458353
 OCR_API_KEY = "K86575271388957"
+
+# Простой HTTP-сервер, чтобы Render не завершал процесс
+class SimpleHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"Bot is alive!")
+
+def run_http_server():
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(("0.0.0.0", port), SimpleHandler)
+    server.serve_forever()
 
 TEACHER_LINKS = {
     "литвин": "https://meet.google.com/ait-gnuz-oqo",
@@ -115,7 +130,6 @@ def handle_schedule_photo(message):
         tg_file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_info.file_path}"
         img_data = requests.get(tg_file_url).content
 
-        # Удаляем само фото со скриншотом из чата
         try:
             bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
         except Exception:
@@ -133,7 +147,6 @@ def handle_schedule_photo(message):
             timeout=40
         ).json()
 
-        # Удаляем временное статусное сообщение
         try:
             bot.delete_message(chat_id=message.chat.id, message_id=temp_msg.message_id)
         except Exception:
@@ -238,6 +251,11 @@ def cmd_week(message):
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
+    
+    # 1. Запуск веб-сервера для Render в фоновом потоке
+    threading.Thread(target=run_http_server, daemon=True).start()
+    
+    # 2. Запуск планировщика и Telegram бота
     setup_scheduler()
     scheduler.start()
     bot.infinity_polling()
