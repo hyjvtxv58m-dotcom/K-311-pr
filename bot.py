@@ -27,7 +27,6 @@ def run_http_server():
     server = HTTPServer(("0.0.0.0", port), SimpleHandler)
     server.serve_forever()
 
-# Соответствие преподавателя: (Точное название предмета, Официальное имя преподавателя, Ссылка)
 TEACHER_CATALOG = {
     "литвин": {
         "subject": "Комп'ютерні мережі",
@@ -126,7 +125,6 @@ scheduler = BackgroundScheduler(timezone=pytz.timezone("Europe/Kyiv"))
 def build_clean_lesson_title(raw_text: str) -> str:
     text_lower = raw_text.lower()
     
-    # 1. Определяем преподавателя
     matched_key = None
     for key in TEACHER_CATALOG.keys():
         if key in text_lower:
@@ -134,15 +132,26 @@ def build_clean_lesson_title(raw_text: str) -> str:
             break
             
     if not matched_key:
+        if "мереж" in text_lower or "автоном" in text_lower:
+            matched_key = "подвиженко" if "подв" in text_lower else "литвин"
+        elif "граф" in text_lower:
+            matched_key = "букатов"
+        elif "речей" in text_lower or "виробн" in text_lower:
+            matched_key = "захаренков"
+        elif "медіа" in text_lower or "інтеракт" in text_lower:
+            matched_key = "бойко"
+        elif "ооп" in text_lower or "програм" in text_lower:
+            matched_key = "яровий" if "яров" in text_lower else "довголуцький"
+        elif "баз" in text_lower or "бд" in text_lower:
+            matched_key = "гордієнко" if "горд" in text_lower else "довголуцький"
+
+    if not matched_key:
         cleaned = re.sub(r"^\s*\d{1,2}[:.]\d{2}\s*[-–]\s*\d{1,2}[:.]\d{2}\s*", "", raw_text)
         return cleaned.strip()
 
     info = TEACHER_CATALOG[matched_key]
-    
-    # 2. Определяем тип пары (лекция / практика)
     lesson_type = "пр" if ("пр" in text_lower or "практ" in text_lower) else "л"
     
-    # Исключение для Литвина (у него есть и графика, и сети)
     subject = info["subject"]
     if matched_key == "литвин":
         if "граф" in text_lower:
@@ -201,15 +210,11 @@ def setup_scheduler():
                 args=[item["title"], link]
             )
 
-@bot.message_handler(content_types=["photo"])
-def handle_schedule_photo(message):
-    if message.chat.id != USER_CHAT_ID:
-        return
-
-    temp_msg = bot.reply_to(message, "⏳ <b>Сканую розклад...</b> <i>Зачекай кілька секунд</i>", parse_mode="HTML")
+def process_schedule_image(message, file_id):
+    temp_msg = bot.reply_to(message, "⏳ <b>Сканую високу точність розкладу...</b>", parse_mode="HTML")
 
     try:
-        file_info = bot.get_file(message.photo[-1].file_id)
+        file_info = bot.get_file(file_id)
         tg_file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_info.file_path}"
         img_data = requests.get(tg_file_url).content
 
@@ -225,9 +230,11 @@ def handle_schedule_photo(message):
                 "apikey": OCR_API_KEY,
                 "language": "auto",
                 "isTable": True,
-                "OCREngine": 2
+                "scale": True,
+                "detectOrientation": True,
+                "OCREngine": 1
             },
-            timeout=40
+            timeout=50
         ).json()
 
         try:
@@ -243,15 +250,18 @@ def handle_schedule_photo(message):
         lines = [line.strip() for line in parsed_text.splitlines() if line.strip()]
 
         found_pairs = []
+        keywords = list(TEACHER_CATALOG.keys()) + ["мереж", "графік", "речей", "медіа", "програм", "баз дан", "аналіт"]
+        
         for line in lines:
             line_lower = line.lower()
-            if any(teacher in line_lower for teacher in TEACHER_CATALOG.keys()):
-                cleaned_line = build_clean_lesson_title(line)
-                if cleaned_line:
-                    found_pairs.append(cleaned_line)
+            if any(k in line_lower for k in keywords):
+                if not any(d in line_lower for d in ["понеділок", "вівторок", "середа", "четвер", "п'ятниця", "спеціальність"]):
+                    cleaned_line = build_clean_lesson_title(line)
+                    if cleaned_line and cleaned_line not in found_pairs:
+                        found_pairs.append(cleaned_line)
 
         if not found_pairs:
-            bot.send_message(message.chat.id, "⚠️ <b>Пари не знайдено!</b>\nПереконайся, що на скріншоті видно викладачів.", parse_mode="HTML")
+            bot.send_message(message.chat.id, "⚠️ <b>Пари не знайдено!</b>\nСпробуй надіслати скріншот як <b>файл (без стиснення)</b>.", parse_mode="HTML")
             return
 
         pair_idx = 0
@@ -273,7 +283,7 @@ def handle_schedule_photo(message):
         success_text = (
             "✨ <b>РОЗКЛАД УСПІШНО ОНОВЛЕНО!</b> ✨\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
-            f"🎯 <b>Розпізнано дисциплін:</b> <code>{len(found_pairs)}</code>\n"
+            f"🎯 <b>Знайдено пар:</b> <code>{len(found_pairs)}</code>\n"
             "🔔 <b>Автонагадування:</b> Активовано ✅\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
             "📌 Натисни /week або /today, щоб переглянути."
@@ -287,6 +297,19 @@ def handle_schedule_photo(message):
             pass
         bot.send_message(message.chat.id, f"❌ <b>Помилка:</b> <code>{e}</code>", parse_mode="HTML")
 
+@bot.message_handler(content_types=["photo"])
+def handle_photo(message):
+    if message.chat.id == USER_CHAT_ID:
+        process_schedule_image(message, message.photo[-1].file_id)
+
+@bot.message_handler(content_types=["document"])
+def handle_document(message):
+    if message.chat.id == USER_CHAT_ID:
+        if message.document.mime_type and message.document.mime_type.startswith("image/"):
+            process_schedule_image(message, message.document.file_id)
+        else:
+            bot.reply_to(message, "⚠️ Надішли зображення (jpg/png) як файл без стиснення.")
+
 @bot.message_handler(commands=["start"])
 def cmd_start(message):
     start_text = (
@@ -297,7 +320,7 @@ def cmd_start(message):
         "├ 🟠 /tomorrow — пари на завтра\n"
         "└ 🗓 /week — повний тиждень з посиланнями\n\n"
         "📸 <b>Оновлення розкладу:</b>\n"
-        "Просто надішли фото розкладу в чат — бот розпізнає предмети, очистить сміття та налаштує дзвінки!\n"
+        "Надішли скріншот або <b>файл без стиснення</b> сюди в чат!\n"
         "━━━━━━━━━━━━━━━━━━━━"
     )
     bot.reply_to(message, start_text, parse_mode="HTML")
@@ -336,7 +359,7 @@ def send_day_schedule(message, day_idx, day_name):
         )
         kb.add(types.InlineKeyboardButton(text=f"👉 {item['time']} • Увійти в {service}", url=link))
 
-    bot.reply_to(message, text, parse_mode="HTML", reply_markup=kb)
+    bot.reply_to(message, text, reply_markup=kb)
 
 @bot.message_handler(commands=["week"])
 def cmd_week(message):
