@@ -27,16 +27,53 @@ def run_http_server():
     server = HTTPServer(("0.0.0.0", port), SimpleHandler)
     server.serve_forever()
 
-TEACHER_LINKS = {
-    "литвин": "https://meet.google.com/ait-gnuz-oqo",
-    "букатов": "https://us04web.zoom.us/j/6128385015?pwd=VqXYvANnVG11TCp_xzdzOGtRwnQmzk.1",
-    "захаренков": "https://us02web.zoom.us/j/6696841684?pwd=eHR3aWV5RTIrWTRFYnFaejlWeXhkUT09",
-    "левченко": "https://us02web.zoom.us/j/4717138521?pwd=eFI0SEdMN3NxQkNBWGlMNVl3WjB5Zz09",
-    "яровий": "https://us02web.zoom.us/j/2589993020?pwd=bU9RUk50TVk5TDJxL1lvbXoxNmtrQT09",
-    "бойко": "https://us02web.zoom.us/j/81133607854?pwd=QwF1BB1kaeZxdI4jVhWa8gOgA9KLVC.1",
-    "гордієнко": "https://us04web.zoom.us/j/71992214760?pwd=i6KR9LbQYZx97lthUIZN8whASUGdO4.1",
-    "довголуцький": "https://meet.google.com/bse-espc-vhs",
-    "подвиженко": "https://us02web.zoom.us/j/8110796424?pwd=Z9z6Xa7iRTX0wViW3xawnNEa2K2SaM.1",
+# Соответствие преподавателя: (Точное название предмета, Официальное имя преподавателя, Ссылка)
+TEACHER_CATALOG = {
+    "литвин": {
+        "subject": "Комп'ютерні мережі",
+        "name": "Литвин Д.Т.",
+        "link": "https://meet.google.com/ait-gnuz-oqo"
+    },
+    "букатов": {
+        "subject": "Комп'ютерна графіка / IT-аналітика",
+        "name": "Букатов Д.В.",
+        "link": "https://us04web.zoom.us/j/6128385015?pwd=VqXYvANnVG11TCp_xzdzOGtRwnQmzk.1"
+    },
+    "захаренков": {
+        "subject": "Інтернет речей та розумне виробництво",
+        "name": "Захаренков Д.Ю.",
+        "link": "https://us02web.zoom.us/j/6696841684?pwd=eHR3aWV5RTIrWTRFYnFaejlWeXhkUT09"
+    },
+    "левченко": {
+        "subject": "Комп'ютерні мережі",
+        "name": "Левченко С.В.",
+        "link": "https://us02web.zoom.us/j/4717138521?pwd=eFI0SEdMN3NxQkNBWGlMNVl3WjB5Zz09"
+    },
+    "яровий": {
+        "subject": "Об'єктно-орієнтоване програмування",
+        "name": "Яровий Р.О.",
+        "link": "https://us02web.zoom.us/j/2589993020?pwd=bU9RUk50TVk5TDJxL1lvbXoxNmtrQT09"
+    },
+    "бойко": {
+        "subject": "Розробка інтерактивного медіа",
+        "name": "Бойко М.М.",
+        "link": "https://us02web.zoom.us/j/81133607854?pwd=QwF1BB1kaeZxdI4jVhWa8gOgA9KLVC.1"
+    },
+    "гордієнко": {
+        "subject": "Організація та адміністрування БД",
+        "name": "Гордієнко І.М.",
+        "link": "https://us04web.zoom.us/j/71992214760?pwd=i6KR9LbQYZx97lthUIZN8whASUGdO4.1"
+    },
+    "довголуцький": {
+        "subject": "ООП / Адміністрування БД",
+        "name": "Довголуцький І.Р.",
+        "link": "https://meet.google.com/bse-espc-vhs"
+    },
+    "подвиженко": {
+        "subject": "Проектування автономних мереж",
+        "name": "Подвиженко А.В.",
+        "link": "https://us02web.zoom.us/j/8110796424?pwd=Z9z6Xa7iRTX0wViW3xawnNEa2K2SaM.1"
+    }
 }
 
 DEFAULT_MEET = "https://meet.google.com/"
@@ -60,7 +97,7 @@ SCHEDULE_DATA = {
     0: [
         {"hour": 10, "minute": 40, "time": "10:40 - 11:55", "title": "Проектування автономних мереж (пр) — Литвин Д.Т."},
         {"hour": 12, "minute": 20, "time": "12:20 - 13:35", "title": "Комп'ютерна графіка (л) — Букатов Д.В."},
-        {"hour": 13, "minute": 45, "time": "13:45 - 15:00", "title": "Інтернет речей та проектування розумного виробництва (л) — Захаренков Д.Ю."},
+        {"hour": 13, "minute": 45, "time": "13:45 - 15:00", "title": "Інтернет речей та розумне виробництво (л) — Захаренков Д.Ю."},
     ],
     1: [
         {"hour": 9,  "minute": 15, "time": "09:15 - 10:30", "title": "Комп'ютерна графіка (пр) — Литвин Д.Т."},
@@ -73,11 +110,11 @@ SCHEDULE_DATA = {
     ],
     3: [
         {"hour": 9,  "minute": 15, "time": "09:15 - 10:30", "title": "ІТ та бізнес-аналітика (л) — Букатов Д.В."},
-        {"hour": 10, "minute": 40, "time": "10:40 - 11:55", "title": "Організація та адміністрування баз даних (л) — Гордієнко І.М."},
-        {"hour": 12, "minute": 20, "time": "12:20 - 13:35", "title": "Інтернет речей та проектування розумного виробництва (л) — Захаренков Д.Ю."},
+        {"hour": 10, "minute": 40, "time": "10:40 - 11:55", "title": "Організація та адміністрування БД (л) — Гордієнко І.М."},
+        {"hour": 12, "minute": 20, "time": "12:20 - 13:35", "title": "Інтернет речей та розумне виробництво (л) — Захаренков Д.Ю."},
     ],
     4: [
-        {"hour": 9,  "minute": 15, "time": "09:15 - 10:30", "title": "Організація та адміністрування баз даних (пр) — Довголуцький І.Р."},
+        {"hour": 9,  "minute": 15, "time": "09:15 - 10:30", "title": "Організація та адміністрування БД (пр) — Довголуцький І.Р."},
         {"hour": 10, "minute": 40, "time": "10:40 - 11:55", "title": "Проектування автономних мереж (л) — Подвиженко А.В."},
         {"hour": 12, "minute": 20, "time": "12:20 - 13:35", "title": "Об'єктно-орієнтоване програмування (пр) — Довголуцький І.Р."},
     ]
@@ -86,20 +123,49 @@ SCHEDULE_DATA = {
 bot = telebot.TeleBot(BOT_TOKEN)
 scheduler = BackgroundScheduler(timezone=pytz.timezone("Europe/Kyiv"))
 
-def clean_lesson_title(text: str) -> str:
-    cleaned = re.sub(r"^\s*\d{1,2}[:.]\d{2}\s*[-–]\s*\d{1,2}[:.]\d{2}\s*", "", text)
-    cleaned = re.sub(r"\s*(zoom|meet)\s*$", "", cleaned, flags=re.IGNORECASE)
-    return cleaned.strip(" -—:")
+def build_clean_lesson_title(raw_text: str) -> str:
+    text_lower = raw_text.lower()
+    
+    # 1. Определяем преподавателя
+    matched_key = None
+    for key in TEACHER_CATALOG.keys():
+        if key in text_lower:
+            matched_key = key
+            break
+            
+    if not matched_key:
+        cleaned = re.sub(r"^\s*\d{1,2}[:.]\d{2}\s*[-–]\s*\d{1,2}[:.]\d{2}\s*", "", raw_text)
+        return cleaned.strip()
+
+    info = TEACHER_CATALOG[matched_key]
+    
+    # 2. Определяем тип пары (лекция / практика)
+    lesson_type = "пр" if ("пр" in text_lower or "практ" in text_lower) else "л"
+    
+    # Исключение для Литвина (у него есть и графика, и сети)
+    subject = info["subject"]
+    if matched_key == "литвин":
+        if "граф" in text_lower:
+            subject = "Комп'ютерна графіка"
+        elif "мереж" in text_lower or "автоном" in text_lower:
+            subject = "Проектування автономних мереж"
+    elif matched_key == "довголуцький":
+        if "бд" in text_lower or "баз" in text_lower:
+            subject = "Організація та адміністрування БД"
+        else:
+            subject = "Об'єктно-орієнтоване програмування"
+
+    return f"{subject} ({lesson_type}) — {info['name']}"
 
 def get_link_for_lesson(lesson_text: str) -> str:
-    text = str(lesson_text).lower()
-    for keyword, link in TEACHER_LINKS.items():
-        if keyword in text:
-            return link
+    text_lower = str(lesson_text).lower()
+    for key, data in TEACHER_CATALOG.items():
+        if key in text_lower:
+            return data["link"]
     return DEFAULT_MEET
 
 def send_lesson_notification(title: str, link: str):
-    clean = clean_lesson_title(title)
+    clean = build_clean_lesson_title(title)
     service = "Google Meet" if "meet.google" in link else "Zoom"
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton(text=f"🚀 Увійти в {service}", url=link))
@@ -179,13 +245,13 @@ def handle_schedule_photo(message):
         found_pairs = []
         for line in lines:
             line_lower = line.lower()
-            if any(teacher in line_lower for teacher in TEACHER_LINKS.keys()):
-                cleaned_line = clean_lesson_title(line)
+            if any(teacher in line_lower for teacher in TEACHER_CATALOG.keys()):
+                cleaned_line = build_clean_lesson_title(line)
                 if cleaned_line:
                     found_pairs.append(cleaned_line)
 
         if not found_pairs:
-            bot.send_message(message.chat.id, "⚠️ <b>Пари не знайдено!</b>\nПереконайся, що на скріншоті чітко видно прізвища викладачів.", parse_mode="HTML")
+            bot.send_message(message.chat.id, "⚠️ <b>Пари не знайдено!</b>\nПереконайся, що на скріншоті видно викладачів.", parse_mode="HTML")
             return
 
         pair_idx = 0
@@ -231,7 +297,7 @@ def cmd_start(message):
         "├ 🟠 /tomorrow — пари на завтра\n"
         "└ 🗓 /week — повний тиждень з посиланнями\n\n"
         "📸 <b>Оновлення розкладу:</b>\n"
-        "Просто надішли фото або скріншот сюди в чат. Бот розпізнає пари, сам видалить фото та налаштує таймери!\n"
+        "Просто надішли фото розкладу в чат — бот розпізнає предмети, очистить сміття та налаштує дзвінки!\n"
         "━━━━━━━━━━━━━━━━━━━━"
     )
     bot.reply_to(message, start_text, parse_mode="HTML")
@@ -258,7 +324,7 @@ def send_day_schedule(message, day_idx, day_name):
     text = f"📍 <b>РОЗКЛАД: {day_name.upper()}</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
     kb = types.InlineKeyboardMarkup()
     for item in lessons:
-        clean_title = clean_lesson_title(item["title"])
+        clean_title = item["title"]
         link = get_link_for_lesson(clean_title)
         service = "Meet" if "meet.google" in link else "Zoom"
         
@@ -283,7 +349,7 @@ def cmd_week(message):
             text += "🌴 <i>Пар немає</i>\n"
         else:
             for l in lessons:
-                clean_title = clean_lesson_title(l["title"])
+                clean_title = l["title"]
                 link = get_link_for_lesson(clean_title)
                 service = "Meet" if "meet.google" in link else "Zoom"
                 escaped_title = html.escape(clean_title)
