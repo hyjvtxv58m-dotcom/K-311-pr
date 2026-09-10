@@ -15,7 +15,7 @@ BOT_TOKEN = "8814170419:AAHWiLDlZEJ0KXeQzU_hVmQckRlsB6wRi8w"
 USER_CHAT_ID = 780458353
 OCR_API_KEY = "K86575271388957"
 
-# Простой HTTP-сервер для удержания активного статуса на Render
+# Сервер для поддержания статуса Live на Render
 class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -35,7 +35,7 @@ TEACHER_CATALOG = {
         "link": "https://meet.google.com/ait-gnuz-oqo"
     },
     "букатов": {
-        "subject": "Комп'ютерна графіка / IT-аналітика",
+        "subject": "IT та бізнес-аналітика",
         "name": "Букатов Д.В.",
         "link": "https://us04web.zoom.us/j/6128385015?pwd=VqXYvANnVG11TCp_xzdzOGtRwnQmzk.1"
     },
@@ -65,7 +65,7 @@ TEACHER_CATALOG = {
         "link": "https://us04web.zoom.us/j/71992214760?pwd=i6KR9LbQYZx97lthUIZN8whASUGdO4.1"
     },
     "довголуцький": {
-        "subject": "ООП / Адміністрування БД",
+        "subject": "Об'єктно-орієнтоване програмування",
         "name": "Довголуцький І.Р.",
         "link": "https://meet.google.com/bse-espc-vhs"
     },
@@ -133,20 +133,6 @@ def build_clean_lesson_title(raw_text: str) -> str:
             break
             
     if not matched_key:
-        if "мереж" in text_lower or "автоном" in text_lower:
-            matched_key = "подвиженко" if "подв" in text_lower else "литвин"
-        elif "граф" in text_lower:
-            matched_key = "букатов"
-        elif "речей" in text_lower or "виробн" in text_lower:
-            matched_key = "захаренков"
-        elif "медіа" in text_lower or "інтеракт" in text_lower:
-            matched_key = "бойко"
-        elif "ооп" in text_lower or "програм" in text_lower:
-            matched_key = "яровий" if "яров" in text_lower else "довголуцький"
-        elif "баз" in text_lower or "бд" in text_lower:
-            matched_key = "гордієнко" if "горд" in text_lower else "довголуцький"
-
-    if not matched_key:
         cleaned = re.sub(r"^\s*\d{1,2}[:.]\d{2}\s*[-–]\s*\d{1,2}[:.]\d{2}\s*", "", raw_text)
         return cleaned.strip()
 
@@ -170,8 +156,10 @@ def build_clean_lesson_title(raw_text: str) -> str:
 def get_link_for_lesson(lesson_text: str) -> str:
     text_lower = str(lesson_text).lower()
     for key, data in TEACHER_CATALOG.items():
-        if key in text_lower:
+        if key in text_lower or data["name"].lower() in text_lower:
             return data["link"]
+    if "аналіт" in text_lower or "графік" in text_lower or "букатов" in text_lower:
+        return TEACHER_CATALOG["букатов"]["link"]
     return DEFAULT_MEET
 
 def send_lesson_notification(title: str, link: str):
@@ -231,11 +219,9 @@ def process_schedule_image(message, file_id):
                 "apikey": OCR_API_KEY,
                 "language": "auto",
                 "isTable": True,
-                "scale": True,
-                "detectOrientation": True,
-                "OCREngine": 1
+                "OCREngine": 2
             },
-            timeout=50
+            timeout=40
         ).json()
 
         try:
@@ -251,18 +237,15 @@ def process_schedule_image(message, file_id):
         lines = [line.strip() for line in parsed_text.splitlines() if line.strip()]
 
         found_pairs = []
-        keywords = list(TEACHER_CATALOG.keys()) + ["мереж", "графік", "речей", "медіа", "програм", "баз дан", "аналіт"]
-        
         for line in lines:
             line_lower = line.lower()
-            if any(k in line_lower for k in keywords):
-                if not any(d in line_lower for d in ["понеділок", "вівторок", "середа", "четвер", "п'ятниця", "спеціальність"]):
-                    cleaned_line = build_clean_lesson_title(line)
-                    if cleaned_line and cleaned_line not in found_pairs:
-                        found_pairs.append(cleaned_line)
+            if any(teacher in line_lower for teacher in TEACHER_CATALOG.keys()):
+                cleaned_line = build_clean_lesson_title(line)
+                if cleaned_line and cleaned_line not in found_pairs:
+                    found_pairs.append(cleaned_line)
 
         if not found_pairs:
-            bot.send_message(message.chat.id, "⚠️ <b>Пари не знайдено!</b>\nПереконайся, що розклад чітко видно.", parse_mode="HTML")
+            bot.send_message(message.chat.id, "⚠️ <b>Пари не знайдено!</b>\nПереконайся, що на скріншоті чітко видно викладачів.", parse_mode="HTML")
             return
 
         pair_idx = 0
@@ -311,10 +294,10 @@ def handle_document(message):
     file_name = (message.document.file_name or "").lower()
     mime = (message.document.mime_type or "").lower()
 
-    if mime.startswith("image/") or file_name.endswith((".png", ".jpg", ".jpeg", ".webp", ".heic")):
+    if mime.startswith("image/") or file_name.endswith((".png", ".jpg", ".jpeg", ".webp")):
         process_schedule_image(message, message.document.file_id)
     else:
-        bot.reply_to(message, "⚠️ Будь ласка, надішли скріншот як фото або файл (JPG, PNG).")
+        bot.reply_to(message, "⚠️ Будь ласка, надішли файл у форматі JPG або PNG.")
 
 @bot.message_handler(commands=["start"])
 def cmd_start(message):
@@ -326,7 +309,7 @@ def cmd_start(message):
         "├ 🟠 /tomorrow — пари на завтра\n"
         "└ 🗓 /week — повний тиждень з посиланнями\n\n"
         "📸 <b>Оновлення розкладу:</b>\n"
-        "Просто надішли фото або файл розкладу в чат — бот розпізнає пари, видалить повідомлення та оновить сповіщення!\n"
+        "Надішли скріншот розкладу своєї групи — бот розпізнає пари, видалить фото та налаштує сповіщення!\n"
         "━━━━━━━━━━━━━━━━━━━━"
     )
     bot.reply_to(message, start_text, parse_mode="HTML")
@@ -357,15 +340,16 @@ def send_day_schedule(message, day_idx, day_name):
         link = get_link_for_lesson(clean_title)
         service = "Meet" if "meet.google" in link else "Zoom"
         
+        escaped_title = html.escape(clean_title)
         text += (
             f"⏰ <code>{item['time']}</code>\n"
-            f"📌 <b>{clean_title}</b>\n"
+            f"📌 <b>{escaped_title}</b>\n"
             f"🔗 Платформа: <i>{service}</i>\n"
             "──────────────────\n"
         )
         kb.add(types.InlineKeyboardButton(text=f"👉 {item['time']} • Увійти в {service}", url=link))
 
-    bot.reply_to(message, text, reply_markup=kb)
+    bot.reply_to(message, text, reply_markup=kb, parse_mode="HTML")
 
 @bot.message_handler(commands=["week"])
 def cmd_week(message):
