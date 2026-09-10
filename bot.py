@@ -134,7 +134,19 @@ SCHEDULE_DATA = {
 bot = telebot.TeleBot(BOT_TOKEN)
 scheduler = BackgroundScheduler(timezone=pytz.timezone("Europe/Kyiv"))
 
-# Принудительная установка списка команд в интерфейс Telegram
+# Кнопки быстрого доступа прямо внизу экрана
+def get_main_keyboard():
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    btn_now = types.KeyboardButton("🔴 Зараз йде")
+    btn_today = types.KeyboardButton("🟡 Сьогодні")
+    btn_tomorrow = types.KeyboardButton("🟠 Завтра")
+    btn_week = types.KeyboardButton("🗓 Весь тиждень")
+    markup.add(btn_now)
+    markup.add(btn_today, btn_tomorrow)
+    markup.add(btn_week)
+    return markup
+
+# Принудительная регистрация команд для системы Telegram
 try:
     bot.set_my_commands([
         types.BotCommand("now", "Поточна пара або перерва"),
@@ -185,14 +197,15 @@ def cmd_start(message):
     start_text = (
         "🔥 <b>АСИСТЕНТ РОЗКЛАДУ ГРУПИ К-311</b> 🔥\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
-        "🚀 <b>Швидкі команди:</b>\n"
-        "├ 🔴 /now — поточна пара або перерва\n"
-        "├ 🟡 /today — пари на сьогодні\n"
-        "├ 🟠 /tomorrow — пари на завтра\n"
-        "└ 🗓 /week — повний розклад на тиждень\n"
+        "🚀 <b>Керування розкладом:</b>\n"
+        "Використовуй великі кнопки знизу екрана або команди меню:\n\n"
+        "├ 🔴 <b>/now</b> — поточна пара або скільки до наступної\n"
+        "├ 🟡 <b>/today</b> — розклад на сьогодні\n"
+        "├ 🟠 <b>/tomorrow</b> — розклад на завтра\n"
+        "└ 🗓 <b>/week</b> — розклад на весь тиждень з кнопками\n"
         "━━━━━━━━━━━━━━━━━━━━"
     )
-    bot.reply_to(message, start_text, parse_mode="HTML")
+    bot.reply_to(message, start_text, parse_mode="HTML", reply_markup=get_main_keyboard())
 
 @bot.message_handler(commands=["now", "current"])
 def cmd_now(message):
@@ -201,7 +214,7 @@ def cmd_now(message):
     weekday = now.weekday()
 
     if weekday not in SCHEDULE_DATA or not SCHEDULE_DATA[weekday]:
-        bot.reply_to(message, "🎉 <b>Сьогодні вихідний або пар немає!</b>", parse_mode="HTML")
+        bot.reply_to(message, "🎉 <b>Сьогодні вихідний або пар немає!</b>", parse_mode="HTML", reply_markup=get_main_keyboard())
         return
 
     today_lessons = SCHEDULE_DATA[weekday]
@@ -263,7 +276,8 @@ def cmd_now(message):
         bot.reply_to(
             message,
             "✅ <b>Всі пари на сьогодні закінчилися!</b>\nВідпочивай або переглянь розклад на завтра: /tomorrow",
-            parse_mode="HTML"
+            parse_mode="HTML",
+            reply_markup=get_main_keyboard()
         )
 
 @bot.message_handler(commands=["today"])
@@ -282,7 +296,7 @@ def send_day_schedule(message, day_idx, day_name):
     lessons = SCHEDULE_DATA.get(day_idx, [])
     if not lessons:
         text = f"🎉 <b>{day_name.upper()}</b> 🎉\n━━━━━━━━━━━━━━━━━━━━\n🌴 <i>Пар немає, можна відпочивати!</i>"
-        bot.reply_to(message, text, parse_mode="HTML")
+        bot.reply_to(message, text, parse_mode="HTML", reply_markup=get_main_keyboard())
         return
 
     text = f"📍 <b>РОЗКЛАД: {day_name.upper()}</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -316,6 +330,18 @@ def cmd_week(message):
                 text += f"⏰ <code>{l['time']}</code> ➔ <a href=\"{l['link']}\">{escaped_title}</a> [<b>{service}</b>]\n"
         
         bot.send_message(message.chat.id, text.strip(), parse_mode="HTML", disable_web_page_preview=True)
+
+# Перехват нажатий на постоянные кнопки внизу
+@bot.message_handler(func=lambda msg: msg.text in ["🔴 Зараз йде", "🟡 Сьогодні", "🟠 Завтра", "🗓 Весь тиждень"])
+def handle_menu_buttons(message):
+    if message.text == "🔴 Зараз йде":
+        cmd_now(message)
+    elif message.text == "🟡 Сьогодні":
+        cmd_today(message)
+    elif message.text == "🟠 Завтра":
+        cmd_tomorrow(message)
+    elif message.text == "🗓 Весь тиждень":
+        cmd_week(message)
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
