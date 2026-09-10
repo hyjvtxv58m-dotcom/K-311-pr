@@ -47,9 +47,9 @@ DAYS_MAP = {
     4: "Пʼятниця",
 }
 
-# Идеально точное расписание со скриншота группы К-311 (14 пар)
+# Официальное расписание К-311 (14 пар)
 SCHEDULE_DATA = {
-    0: [  # Понеділок (07 вересня)
+    0: [  # Понеділок
         {
             "hour": 10, "minute": 40, "time": "10:40 - 11:55",
             "title": "Проектування автономних мереж (пр) — Литвин Д.Т.",
@@ -66,7 +66,7 @@ SCHEDULE_DATA = {
             "link": TEACHER_LINKS["захаренков"][0], "service": TEACHER_LINKS["захаренков"][1]
         },
     ],
-    1: [  # Вівторок (08 вересня)
+    1: [  # Вівторок
         {
             "hour": 9, "minute": 15, "time": "09:15 - 10:30",
             "title": "Комп'ютерна графіка (пр) — Литвин Д.Т.",
@@ -78,7 +78,7 @@ SCHEDULE_DATA = {
             "link": TEACHER_LINKS["левченко"][0], "service": TEACHER_LINKS["левченко"][1]
         },
     ],
-    2: [  # Середа (09 вересня)
+    2: [  # Середа
         {
             "hour": 9, "minute": 15, "time": "09:15 - 10:30",
             "title": "Об'єктно-орієнтоване програмування (л) — Яровий Р.О.",
@@ -95,7 +95,7 @@ SCHEDULE_DATA = {
             "link": TEACHER_LINKS["литвин"][0], "service": TEACHER_LINKS["литвин"][1]
         },
     ],
-    3: [  # Четвер (10 вересня)
+    3: [  # Четвер
         {
             "hour": 9, "minute": 15, "time": "09:15 - 10:30",
             "title": "ІТ та бізнес-аналітика (л) — Букатов Д.В.",
@@ -112,7 +112,7 @@ SCHEDULE_DATA = {
             "link": TEACHER_LINKS["захаренков"][0], "service": TEACHER_LINKS["захаренков"][1]
         },
     ],
-    4: [  # Пʼятниця (11 вересня)
+    4: [  # Пʼятниця
         {
             "hour": 9, "minute": 15, "time": "09:15 - 10:30",
             "title": "Організація та адміністрування баз даних (пр) — Довголуцький І.Р.",
@@ -174,12 +174,85 @@ def cmd_start(message):
         "🔥 <b>АСИСТЕНТ РОЗКЛАДУ ГРУПИ К-311</b> 🔥\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
         "🚀 <b>Швидкі команди:</b>\n"
-        "├ 🔴 /today — пари на сьогодні\n"
+        "├ 🔴 /now — поточна пара або перерва\n"
+        "├ 🟡 /today — пари на сьогодні\n"
         "├ 🟠 /tomorrow — пари на завтра\n"
-        "└ 🗓 /week — повний розклад на тиждень\n\n"
-        "⏰ Розклад повністю налаштовано під офіційний графік!"
+        "└ 🗓 /week — повний розклад на тиждень\n"
+        "━━━━━━━━━━━━━━━━━━━━"
     )
     bot.reply_to(message, start_text, parse_mode="HTML")
+
+@bot.message_handler(commands=["now", "current"])
+def cmd_now(message):
+    kyiv_tz = pytz.timezone("Europe/Kyiv")
+    now = datetime.now(kyiv_tz)
+    weekday = now.weekday()
+
+    if weekday not in SCHEDULE_DATA or not SCHEDULE_DATA[weekday]:
+        bot.reply_to(message, "🎉 <b>Сьогодні вихідний або пар немає!</b>", parse_mode="HTML")
+        return
+
+    today_lessons = SCHEDULE_DATA[weekday]
+    current_time_minutes = now.hour * 60 + now.minute
+
+    current_lesson = None
+    next_lesson = None
+
+    for item in today_lessons:
+        time_parts = item["time"].split(" - ")
+        start_h, start_m = map(int, time_parts[0].split(":"))
+        end_h, end_m = map(int, time_parts[1].split(":"))
+
+        start_minutes = start_h * 60 + start_m
+        end_minutes = end_h * 60 + end_m
+
+        if start_minutes <= current_time_minutes <= end_minutes:
+            current_lesson = (item, end_minutes - current_time_minutes)
+            break
+        elif current_time_minutes < start_minutes and next_lesson is None:
+            next_lesson = (item, start_minutes - current_time_minutes)
+
+    if current_lesson:
+        lesson, mins_left = current_lesson
+        escaped_title = html.escape(lesson["title"])
+        service = lesson["service"]
+        
+        text = (
+            "🔴 <b>ЗАРАЗ ІДЕ ПАРА</b> 🔴\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            f"⏰ <code>{lesson['time']}</code> (залишилось {mins_left} хв)\n"
+            f"📌 <b>{escaped_title}</b>\n"
+            f"🔗 Платформа: <i>{service}</i>\n"
+            "━━━━━━━━━━━━━━━━━━━━"
+        )
+        kb = types.InlineKeyboardMarkup()
+        kb.add(types.InlineKeyboardButton(text=f"🚀 Увійти в {service}", url=lesson["link"]))
+        bot.reply_to(message, text, parse_mode="HTML", reply_markup=kb)
+
+    elif next_lesson:
+        lesson, mins_before = next_lesson
+        escaped_title = html.escape(lesson["title"])
+        service = lesson["service"]
+        
+        text = (
+            "⏳ <b>ЗАРАЗ ПЕРЕРВА</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            f"🔜 <b>Наступна пара через {mins_before} хв:</b>\n"
+            f"⏰ <code>{lesson['time']}</code>\n"
+            f"📌 <b>{escaped_title}</b>\n"
+            f"🔗 Платформа: <i>{service}</i>\n"
+            "━━━━━━━━━━━━━━━━━━━━"
+        )
+        kb = types.InlineKeyboardMarkup()
+        kb.add(types.InlineKeyboardButton(text=f"👉 Підготуватися • {service}", url=lesson["link"]))
+        bot.reply_to(message, text, parse_mode="HTML", reply_markup=kb)
+
+    else:
+        bot.reply_to(
+            message,
+            "✅ <b>Всі пари на сьогодні закінчилися!</b>\nВідпочивай або переглянь розклад на завтра: /tomorrow",
+            parse_mode="HTML"
+        )
 
 @bot.message_handler(commands=["today"])
 def cmd_today(message):
@@ -196,7 +269,7 @@ def cmd_tomorrow(message):
 def send_day_schedule(message, day_idx, day_name):
     lessons = SCHEDULE_DATA.get(day_idx, [])
     if not lessons:
-        text = f"🎉 <b>{day_name.upper()}</b> 🎉\n━━━━━━━━━━━━━━━━━━━━\n🌴 <i>Пар немає, відпочивай!</i>"
+        text = f"🎉 <b>{day_name.upper()}</b> 🎉\n━━━━━━━━━━━━━━━━━━━━\n🌴 <i>Пар немає, можна відпочивати!</i>"
         bot.reply_to(message, text, parse_mode="HTML")
         return
 
