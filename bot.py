@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import threading
+import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime
 import pytz
@@ -94,7 +95,6 @@ DAYS_MAP = {
     4: "Пʼятниця",
 }
 
-# Сетка звонков по дням для группы К-311
 DAY_SLOTS = {
     0: [
         {"hour": 10, "minute": 40, "time": "10:40 - 11:55"},
@@ -122,12 +122,11 @@ DAY_SLOTS = {
     ]
 }
 
-# Текущее расписание по умолчанию
 SCHEDULE_DATA = {
     0: [
         {"hour": 10, "minute": 40, "time": "10:40 - 11:55", "title": "Проектування автономних мереж (пр) — Литвин Д.Т.", "link": TEACHERS["литвин"]["link"], "service": TEACHERS["литвин"]["service"]},
         {"hour": 12, "minute": 20, "time": "12:20 - 13:35", "title": "Комп'ютерна графіка (л) — Букатов Д.В.", "link": TEACHERS["букатов"]["link"], "service": TEACHERS["букатов"]["service"]},
-        {"hour": 13, "minute": 45, "time": "13:45 - 15:00", "title": "Інтернет речей та проектування розумного виробництва (л) — Захаренков Д.Ю.", "link": TEACHERS["захаренков"]["link"], "service": TEACHERS["захаренков"]["service"]},
+        {"hour": 13, "minute": 45, "time": "13:45 - 15:00", "title": "Інтернет речей та проектування розумного виробництва (пр) — Захаренков Д.Ю.", "link": TEACHERS["захаренков"]["link"], "service": TEACHERS["захаренков"]["service"]},
     ],
     1: [
         {"hour": 9,  "minute": 15, "time": "09:15 - 10:30", "title": "Комп'ютерна графіка (пр) — Литвин Д.Т.", "link": TEACHERS["литвин"]["link"], "service": TEACHERS["литвин"]["service"]},
@@ -152,6 +151,32 @@ SCHEDULE_DATA = {
 
 bot = telebot.TeleBot(BOT_TOKEN)
 scheduler = BackgroundScheduler(timezone=pytz.timezone("Europe/Kyiv"))
+
+# Хранилище id отправленных сообщений для автоматической зачистки
+last_bot_messages = {}
+
+def safe_delete(chat_id, msg_id):
+    try:
+        bot.delete_message(chat_id, msg_id)
+    except Exception:
+        pass
+
+def delayed_delete(chat_id, msg_id, delay_sec=5):
+    def worker():
+        time.sleep(delay_sec)
+        safe_delete(chat_id, msg_id)
+    threading.Thread(target=worker, daemon=True).start()
+
+def clear_previous_messages(chat_id):
+    if chat_id in last_bot_messages:
+        for m_id in last_bot_messages[chat_id]:
+            safe_delete(chat_id, m_id)
+        last_bot_messages[chat_id] = []
+
+def track_message(chat_id, msg_id):
+    if chat_id not in last_bot_messages:
+        last_bot_messages[chat_id] = []
+    last_bot_messages[chat_id].append(msg_id)
 
 def get_main_keyboard():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
@@ -204,7 +229,6 @@ def identify_lesson_details(block_text: str, teacher_key: str):
     txt = block_text.lower()
     t_info = TEACHERS[teacher_key]
     
-    # Определяем предмет с учетом специфики преподавателей
     subject = t_info["default_subject"]
     if teacher_key == "литвин":
         if "автоном" in txt:
@@ -233,7 +257,10 @@ def identify_lesson_details(block_text: str, teacher_key: str):
     }
 
 def parse_and_update(message, file_id):
-    temp_msg = bot.reply_to(message, "⏳ <b>Аналізую розклад зі скріншота...</b>", parse_mode="HTML")
+    # Удаляем сообщение с отправленным скриншотом/файлом
+    safe_delete(message.chat.id, message.message_id)
+    temp_msg = bot.send_message(message.chat.id, "⏳ <b>Аналізую розклад зі скріншота...</b>", parse_mode="HTML")
+    
     try:
         f_info = bot.get_file(file_id)
         img_bytes = requests.get(f"https://api.telegram.org/file/bot{BOT_TOKEN}/{f_info.file_path}").content
@@ -245,35 +272,31 @@ def parse_and_update(message, file_id):
             timeout=50
         ).json()
 
-        try:
-            bot.delete_message(chat_id=message.chat.id, message_id=temp_msg.message_id)
-        except Exception:
-            pass
+        safe_delete(message.chat.id, temp_msg.message_id)
 
         if res.get("IsErroredOnProcessing"):
-            bot.send_message(message.chat.id, f"❌ Помилка OCR: {res.get('ErrorMessage')}", reply_markup=get_main_keyboard())
+            err = bot.send_message(message.chat.id, f"❌ Помилка OCR: {res.get('ErrorMessage')}", reply_markup=get_main_keyboard())
+            delayed_delete(message.chat.id, err.message_id, 6)
             return
 
         text = res["ParsedResults"][0]["ParsedText"]
         lines = [l.strip() for l in text.splitlines() if l.strip()]
 
-        # Находим каждую пару строго по фамилии преподавателя в строках
         found_lessons = []
         for i, line in enumerate(lines):
             line_lower = line.lower()
             for t_key in TEACHERS.keys():
                 if t_key in line_lower:
-                    # Берем контекст: саму строку и строку выше (где обычно название предмета)
                     context = (lines[i-1] + " " + line) if i > 0 else line
                     lesson_obj = identify_lesson_details(context, t_key)
                     found_lessons.append(lesson_obj)
                     break
 
         if not found_lessons:
-            bot.send_message(message.chat.id, "⚠️ Пари не вдалося розпізнати. Переконайся, що скріншот чіткий.", reply_markup=get_main_keyboard())
+            err = bot.send_message(message.chat.id, "⚠️ Пари не вдалося розпізнати. Переконайся, що скріншот чіткий.", reply_markup=get_main_keyboard())
+            delayed_delete(message.chat.id, err.message_id, 6)
             return
 
-        # Раскладываем пары по дням недели
         idx = 0
         total_assigned = 0
         for day_i in range(5):
@@ -295,24 +318,22 @@ def parse_and_update(message, file_id):
 
         setup_scheduler()
 
-        bot.send_message(
+        success_msg = bot.send_message(
             message.chat.id,
-            f"✨ <b>РОЗКЛАД ОНОВЛЕНО З ФОТО!</b> ✨\n"
+            f"✨ <b>РОЗКЛАД ОНОВЛЕНО!</b> ✨\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"🎯 <b>Знайдено пар:</b> <code>{total_assigned}</code>\n"
-            f"🔔 Нагадування переналаштовано.\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"Натисни <b>🗓 Весь тиждень</b> або <b>🔴 Зараз йде</b>!",
+            f"🔔 Нагадування переналаштовано.",
             parse_mode="HTML",
             reply_markup=get_main_keyboard()
         )
+        # Уведомление об успешном обновлении автоматически удалится через 5 секунд
+        delayed_delete(message.chat.id, success_msg.message_id, 5)
 
     except Exception as e:
-        try:
-            bot.delete_message(chat_id=message.chat.id, message_id=temp_msg.message_id)
-        except Exception:
-            pass
-        bot.send_message(message.chat.id, f"❌ Помилка обробки: {e}", reply_markup=get_main_keyboard())
+        safe_delete(message.chat.id, temp_msg.message_id)
+        err = bot.send_message(message.chat.id, f"❌ Помилка обробки: {e}", reply_markup=get_main_keyboard())
+        delayed_delete(message.chat.id, err.message_id, 6)
 
 @bot.message_handler(content_types=["photo"])
 def on_photo(message):
@@ -326,27 +347,35 @@ def on_doc(message):
 
 @bot.message_handler(commands=["start"])
 def cmd_start(message):
+    safe_delete(message.chat.id, message.message_id)
+    clear_previous_messages(message.chat.id)
+    
     start_text = (
         "🔥 <b>АСИСТЕНТ РОЗКЛАДУ ГРУПИ К-311</b> 🔥\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
-        "🚀 <b>Керування кнопками знизу:</b>\n"
-        "├ 🔴 <b>Зараз йде</b> — поточна пара або скільки до наступної\n"
-        "├ 🟡 <b>Сьогодні</b> — розклад на поточний день\n"
-        "├ 🟠 <b>Завтра</b> — пари на завтрашній день\n"
-        "├ 🗓 <b>Весь тиждень</b> — повний розклад\n"
-        "└ 📸 <b>Оновити розклад (фото)</b> — надіслати скріншот\n"
+        "🚀 <b>Швидкі кнопки:</b>\n"
+        "├ 🔴 <b>Зараз йде</b> — активна пара або перерва\n"
+        "├ 🟡 <b>Сьогодні</b> — розклад на день\n"
+        "├ 🟠 <b>Завтра</b> — пари на завтра\n"
+        "├ 🗓 <b>Весь тиждень</b> — повний графік\n"
+        "└ 📸 <b>Оновити розклад</b> — завантажити свіжий файл\n"
         "━━━━━━━━━━━━━━━━━━━━"
     )
-    bot.reply_to(message, start_text, parse_mode="HTML", reply_markup=get_main_keyboard())
+    sent = bot.send_message(message.chat.id, start_text, parse_mode="HTML", reply_markup=get_main_keyboard())
+    track_message(message.chat.id, sent.message_id)
 
 @bot.message_handler(commands=["now", "current"])
 def cmd_now(message):
+    safe_delete(message.chat.id, message.message_id)
+    clear_previous_messages(message.chat.id)
+
     kyiv_tz = pytz.timezone("Europe/Kyiv")
     now = datetime.now(kyiv_tz)
     weekday = now.weekday()
 
     if weekday not in SCHEDULE_DATA or not SCHEDULE_DATA[weekday]:
-        bot.reply_to(message, "🎉 <b>Сьогодні вихідний або пар немає!</b>", parse_mode="HTML", reply_markup=get_main_keyboard())
+        sent = bot.send_message(message.chat.id, "🎉 <b>Сьогодні вихідний або пар немає!</b>", parse_mode="HTML", reply_markup=get_main_keyboard())
+        track_message(message.chat.id, sent.message_id)
         return
 
     today_lessons = SCHEDULE_DATA[weekday]
@@ -384,7 +413,8 @@ def cmd_now(message):
         )
         kb = types.InlineKeyboardMarkup()
         kb.add(types.InlineKeyboardButton(text=f"🚀 Увійти в {service}", url=lesson["link"]))
-        bot.reply_to(message, text, parse_mode="HTML", reply_markup=kb)
+        sent = bot.send_message(message.chat.id, text, parse_mode="HTML", reply_markup=kb)
+        track_message(message.chat.id, sent.message_id)
 
     elif next_lesson:
         lesson, mins_before = next_lesson
@@ -402,33 +432,40 @@ def cmd_now(message):
         )
         kb = types.InlineKeyboardMarkup()
         kb.add(types.InlineKeyboardButton(text=f"👉 Підготуватися • {service}", url=lesson["link"]))
-        bot.reply_to(message, text, parse_mode="HTML", reply_markup=kb)
+        sent = bot.send_message(message.chat.id, text, parse_mode="HTML", reply_markup=kb)
+        track_message(message.chat.id, sent.message_id)
 
     else:
-        bot.reply_to(
-            message,
+        sent = bot.send_message(
+            message.chat.id,
             "✅ <b>Всі пари на сьогодні закінчилися!</b>\nВідпочивай або переглянь розклад на завтра.",
             parse_mode="HTML",
             reply_markup=get_main_keyboard()
         )
+        track_message(message.chat.id, sent.message_id)
 
 @bot.message_handler(commands=["today"])
 def cmd_today(message):
+    safe_delete(message.chat.id, message.message_id)
+    clear_previous_messages(message.chat.id)
     kyiv_tz = pytz.timezone("Europe/Kyiv")
     today_idx = datetime.now(kyiv_tz).weekday()
-    send_day_schedule(message, today_idx, DAYS_MAP.get(today_idx, "Сьогодні"))
+    send_day_schedule(message.chat.id, today_idx, DAYS_MAP.get(today_idx, "Сьогодні"))
 
 @bot.message_handler(commands=["tomorrow"])
 def cmd_tomorrow(message):
+    safe_delete(message.chat.id, message.message_id)
+    clear_previous_messages(message.chat.id)
     kyiv_tz = pytz.timezone("Europe/Kyiv")
     t_idx = (datetime.now(kyiv_tz).weekday() + 1) % 7
-    send_day_schedule(message, t_idx, DAYS_MAP.get(t_idx, "Завтра"))
+    send_day_schedule(message.chat.id, t_idx, DAYS_MAP.get(t_idx, "Завтра"))
 
-def send_day_schedule(message, day_idx, day_name):
+def send_day_schedule(chat_id, day_idx, day_name):
     lessons = SCHEDULE_DATA.get(day_idx, [])
     if not lessons:
         text = f"🎉 <b>{day_name.upper()}</b> 🎉\n━━━━━━━━━━━━━━━━━━━━\n🌴 <i>Пар немає, можна відпочивати!</i>"
-        bot.reply_to(message, text, parse_mode="HTML", reply_markup=get_main_keyboard())
+        sent = bot.send_message(chat_id, text, parse_mode="HTML", reply_markup=get_main_keyboard())
+        track_message(chat_id, sent.message_id)
         return
 
     text = f"📍 <b>РОЗКЛАД: {day_name.upper()}</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -444,10 +481,14 @@ def send_day_schedule(message, day_idx, day_name):
         )
         kb.add(types.InlineKeyboardButton(text=f"👉 {item['time']} • Увійти в {service}", url=item["link"]))
 
-    bot.reply_to(message, text, parse_mode="HTML", reply_markup=kb)
+    sent = bot.send_message(chat_id, text, parse_mode="HTML", reply_markup=kb)
+    track_message(chat_id, sent.message_id)
 
 @bot.message_handler(commands=["week"])
 def cmd_week(message):
+    safe_delete(message.chat.id, message.message_id)
+    clear_previous_messages(message.chat.id)
+    
     for d_num in range(5):
         d_name = DAYS_MAP[d_num]
         lessons = SCHEDULE_DATA.get(d_num, [])
@@ -461,7 +502,8 @@ def cmd_week(message):
                 escaped_title = html.escape(l["title"])
                 text += f"⏰ <code>{l['time']}</code> ➔ <a href=\"{l['link']}\">{escaped_title}</a> [<b>{service}</b>]\n"
         
-        bot.send_message(message.chat.id, text.strip(), parse_mode="HTML", disable_web_page_preview=True)
+        sent = bot.send_message(message.chat.id, text.strip(), parse_mode="HTML", disable_web_page_preview=True)
+        track_message(message.chat.id, sent.message_id)
 
 @bot.message_handler(func=lambda msg: msg.text in ["🔴 Зараз йде", "🟡 Сьогодні", "🟠 Завтра", "🗓 Весь тиждень", "📸 Оновити розклад (фото)"])
 def handle_menu_buttons(message):
@@ -474,14 +516,15 @@ def handle_menu_buttons(message):
     elif message.text == "🗓 Весь тиждень":
         cmd_week(message)
     elif message.text == "📸 Оновити розклад (фото)":
+        safe_delete(message.chat.id, message.message_id)
         instruction = (
-            "📸 <b>НАДІШЛИ СКРІНШОТ РОЗКЛАДУ:</b>\n"
+            "📸 <b>ОНОВЛЕННЯ РОЗКЛАДУ:</b>\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
-            "1. Натисни на <b>скріпку 📎</b> біля поля вводу.\n"
-            "2. Оберіть скріншот розкладу як фото або файл.\n"
-            "3. Бот самостійно розпізнає всі пари і оновить базу!"
+            "Надішли сюди новий скріншот або файл розкладу через 📎.\n"
+            "<i>(Повідомлення з файлом автоматично видалиться після розпізнавання)</i>"
         )
-        bot.reply_to(message, instruction, parse_mode="HTML", reply_markup=get_main_keyboard())
+        tip = bot.send_message(message.chat.id, instruction, parse_mode="HTML")
+        delayed_delete(message.chat.id, tip.message_id, 8)
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
