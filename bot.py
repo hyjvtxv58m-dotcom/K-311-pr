@@ -1,6 +1,7 @@
 import html
 import logging
 import os
+import re
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime
@@ -14,7 +15,6 @@ BOT_TOKEN = "8814170419:AAHWiLDlZEJ0KXeQzU_hVmQckRlsB6wRi8w"
 USER_CHAT_ID = 780458353
 OCR_API_KEY = "K86575271388957"
 
-# Простой HTTP-сервер, чтобы Render не завершал процесс
 class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -86,6 +86,11 @@ SCHEDULE_DATA = {
 bot = telebot.TeleBot(BOT_TOKEN)
 scheduler = BackgroundScheduler(timezone=pytz.timezone("Europe/Kyiv"))
 
+def clean_lesson_title(text: str) -> str:
+    cleaned = re.sub(r"^\s*\d{1,2}[:.]\d{2}\s*[-–]\s*\d{1,2}[:.]\d{2}\s*", "", text)
+    cleaned = re.sub(r"\s*(zoom|meet)\s*$", "", cleaned, flags=re.IGNORECASE)
+    return cleaned.strip(" -—:")
+
 def get_link_for_lesson(lesson_text: str) -> str:
     text = str(lesson_text).lower()
     for keyword, link in TEACHER_LINKS.items():
@@ -94,11 +99,23 @@ def get_link_for_lesson(lesson_text: str) -> str:
     return DEFAULT_MEET
 
 def send_lesson_notification(title: str, link: str):
+    clean = clean_lesson_title(title)
+    service = "Google Meet" if "meet.google" in link else "Zoom"
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton(text="🚀 Увійти в пару", url=link))
+    kb.add(types.InlineKeyboardButton(text=f"🚀 Увійти в {service}", url=link))
+    
+    text = (
+        "🚨 <b>УВАГА! ПАРА РОЗПОЧАЛАСЯ</b> 🚨\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        f"📍 <b>Дисципліна:</b>\n<code>{html.escape(clean)}</code>\n\n"
+        f"🔗 <b>Платформа:</b> {service}\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "⚡️ <i>Підключайся прямо зараз!</i>"
+    )
     bot.send_message(
         chat_id=USER_CHAT_ID,
-        text=f"🔔 Пара розпочалася!\n\n📚 {title}",
+        text=text,
+        parse_mode="HTML",
         reply_markup=kb
     )
 
@@ -123,7 +140,7 @@ def handle_schedule_photo(message):
     if message.chat.id != USER_CHAT_ID:
         return
 
-    temp_msg = bot.reply_to(message, "⏳ Зчитую скріншот і розпізнаю пари...")
+    temp_msg = bot.reply_to(message, "⏳ <b>Сканую розклад...</b> <i>Зачекай кілька секунд</i>", parse_mode="HTML")
 
     try:
         file_info = bot.get_file(message.photo[-1].file_id)
@@ -153,7 +170,7 @@ def handle_schedule_photo(message):
             pass
 
         if ocr_res.get("IsErroredOnProcessing"):
-            bot.send_message(message.chat.id, f"❌ Помилка OCR: {ocr_res.get('ErrorMessage')}")
+            bot.send_message(message.chat.id, f"❌ <b>Помилка OCR:</b> <code>{ocr_res.get('ErrorMessage')}</code>", parse_mode="HTML")
             return
 
         parsed_text = ocr_res["ParsedResults"][0]["ParsedText"]
@@ -163,10 +180,12 @@ def handle_schedule_photo(message):
         for line in lines:
             line_lower = line.lower()
             if any(teacher in line_lower for teacher in TEACHER_LINKS.keys()):
-                found_pairs.append(line)
+                cleaned_line = clean_lesson_title(line)
+                if cleaned_line:
+                    found_pairs.append(cleaned_line)
 
         if not found_pairs:
-            bot.send_message(message.chat.id, "⚠️ Пари не знайдено. Переконайся, що на зображенні чітко видно прізвища викладачів.")
+            bot.send_message(message.chat.id, "⚠️ <b>Пари не знайдено!</b>\nПереконайся, що на скріншоті чітко видно прізвища викладачів.", parse_mode="HTML")
             return
 
         pair_idx = 0
@@ -184,26 +203,38 @@ def handle_schedule_photo(message):
                     pair_idx += 1
 
         setup_scheduler()
-        bot.send_message(message.chat.id, f"✅ Розклад оновлено! Знайдено пар: {len(found_pairs)}.\n\nПеревір оновлення: /week")
+        
+        success_text = (
+            "✨ <b>РОЗКЛАД УСПІШНО ОНОВЛЕНО!</b> ✨\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            f"🎯 <b>Розпізнано дисциплін:</b> <code>{len(found_pairs)}</code>\n"
+            "🔔 <b>Автонагадування:</b> Активовано ✅\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "📌 Натисни /week або /today, щоб переглянути."
+        )
+        bot.send_message(message.chat.id, success_text, parse_mode="HTML")
 
     except Exception as e:
         try:
             bot.delete_message(chat_id=message.chat.id, message_id=temp_msg.message_id)
         except Exception:
             pass
-        bot.send_message(message.chat.id, f"❌ Помилка: {e}")
+        bot.send_message(message.chat.id, f"❌ <b>Помилка:</b> <code>{e}</code>", parse_mode="HTML")
 
 @bot.message_handler(commands=["start"])
 def cmd_start(message):
-    bot.reply_to(
-        message,
-        "👋 Бот розкладу К-311!\n\n"
-        "• /today — пари на сьогодні\n"
-        "• /tomorrow — пари на завтра\n"
-        "• /week — розклад на весь тиждень з посиланнями\n\n"
-        "📷 <b>Надішли скріншот розкладу</b> — бот розпізнає пари, видалить скрін і оновить розклад!",
-        parse_mode="HTML"
+    start_text = (
+        "🔥 <b>АСИСТЕНТ РОЗКЛАДУ ГРУПИ К-311</b> 🔥\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "🚀 <b>Швидкі команди:</b>\n"
+        "├ 🔴 /today — пари на сьогодні\n"
+        "├ 🟠 /tomorrow — пари на завтра\n"
+        "└ 🗓 /week — повний тиждень з посиланнями\n\n"
+        "📸 <b>Оновлення розкладу:</b>\n"
+        "Просто надішли фото або скріншот сюди в чат. Бот розпізнає пари, сам видалить фото та налаштує таймери!\n"
+        "━━━━━━━━━━━━━━━━━━━━"
     )
+    bot.reply_to(message, start_text, parse_mode="HTML")
 
 @bot.message_handler(commands=["today"])
 def cmd_today(message):
@@ -220,42 +251,49 @@ def cmd_tomorrow(message):
 def send_day_schedule(message, day_idx, day_name):
     lessons = SCHEDULE_DATA.get(day_idx, [])
     if not lessons:
-        bot.reply_to(message, f"🎉 {day_name}: пар немає!")
+        text = f"🎉 <b>{day_name.upper()}</b> 🎉\n━━━━━━━━━━━━━━━━━━━━\n🌴 <i>Пар немає, можна відпочивати!</i>"
+        bot.reply_to(message, text, parse_mode="HTML")
         return
 
-    text = f"📋 Пари на {day_name}:\n\n"
+    text = f"📍 <b>РОЗКЛАД: {day_name.upper()}</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
     kb = types.InlineKeyboardMarkup()
     for item in lessons:
-        link = get_link_for_lesson(item["title"])
+        clean_title = clean_lesson_title(item["title"])
+        link = get_link_for_lesson(clean_title)
         service = "Meet" if "meet.google" in link else "Zoom"
-        text += f"⏰ {item['time']} — {item['title']}\n"
-        kb.add(types.InlineKeyboardButton(text=f"👉 {item['time']} Увійти ({service})", url=link))
+        
+        text += (
+            f"⏰ <code>{item['time']}</code>\n"
+            f"📌 <b>{clean_title}</b>\n"
+            f"🔗 Платформа: <i>{service}</i>\n"
+            "──────────────────\n"
+        )
+        kb.add(types.InlineKeyboardButton(text=f"👉 {item['time']} • Увійти в {service}", url=link))
 
-    bot.reply_to(message, text, reply_markup=kb)
+    bot.reply_to(message, text, parse_mode="HTML", reply_markup=kb)
 
 @bot.message_handler(commands=["week"])
 def cmd_week(message):
     for d_num in range(5):
         d_name = DAYS_MAP[d_num]
         lessons = SCHEDULE_DATA.get(d_num, [])
-        text = f"🗓 <b>{d_name}</b>:\n"
+        
+        text = f"🗓 <b>{d_name.upper()}</b>\n━━━━━━━━━━━━━━━━━━━━\n"
         if not lessons:
-            text += "  <i>(пар немає)</i>"
+            text += "🌴 <i>Пар немає</i>\n"
         else:
             for l in lessons:
-                link = get_link_for_lesson(l["title"])
+                clean_title = clean_lesson_title(l["title"])
+                link = get_link_for_lesson(clean_title)
                 service = "Meet" if "meet.google" in link else "Zoom"
-                escaped_title = html.escape(l["title"])
-                text += f"  • <b>{l['time']}</b> — <a href=\"{link}\">{escaped_title}</a> [<b>{service}</b>]\n"
+                escaped_title = html.escape(clean_title)
+                text += f"⏰ <code>{l['time']}</code> ➔ <a href=\"{link}\">{escaped_title}</a> [<b>{service}</b>]\n"
+        
         bot.send_message(message.chat.id, text.strip(), parse_mode="HTML", disable_web_page_preview=True)
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    
-    # 1. Запуск веб-сервера для Render в фоновом потоке
     threading.Thread(target=run_http_server, daemon=True).start()
-    
-    # 2. Запуск планировщика и Telegram бота
     setup_scheduler()
     scheduler.start()
     bot.infinity_polling()
