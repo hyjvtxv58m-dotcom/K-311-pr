@@ -134,6 +134,18 @@ SCHEDULE_DATA = {
 bot = telebot.TeleBot(BOT_TOKEN)
 scheduler = BackgroundScheduler(timezone=pytz.timezone("Europe/Kyiv"))
 
+# Принудительная установка списка команд в интерфейс Telegram
+try:
+    bot.set_my_commands([
+        types.BotCommand("now", "Поточна пара або перерва"),
+        types.BotCommand("today", "Пари на сьогодні"),
+        types.BotCommand("tomorrow", "Пари на завтра"),
+        types.BotCommand("week", "Розклад на весь тиждень"),
+        types.BotCommand("start", "Головне меню")
+    ])
+except Exception as e:
+    logging.warning(f"Could not set bot commands: {e}")
+
 def send_lesson_notification(title: str, link: str, service: str):
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton(text=f"🚀 Увійти в {service}", url=link))
