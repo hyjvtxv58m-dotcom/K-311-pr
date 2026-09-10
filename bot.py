@@ -15,6 +15,7 @@ BOT_TOKEN = "8814170419:AAHWiLDlZEJ0KXeQzU_hVmQckRlsB6wRi8w"
 USER_CHAT_ID = 780458353
 OCR_API_KEY = "K86575271388957"
 
+# Простой HTTP-сервер для удержания активного статуса на Render
 class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -211,7 +212,7 @@ def setup_scheduler():
             )
 
 def process_schedule_image(message, file_id):
-    temp_msg = bot.reply_to(message, "⏳ <b>Сканую високу точність розкладу...</b>", parse_mode="HTML")
+    temp_msg = bot.reply_to(message, "⏳ <b>Сканую розклад...</b> <i>Зачекай кілька секунд</i>", parse_mode="HTML")
 
     try:
         file_info = bot.get_file(file_id)
@@ -261,7 +262,7 @@ def process_schedule_image(message, file_id):
                         found_pairs.append(cleaned_line)
 
         if not found_pairs:
-            bot.send_message(message.chat.id, "⚠️ <b>Пари не знайдено!</b>\nСпробуй надіслати скріншот як <b>файл (без стиснення)</b>.", parse_mode="HTML")
+            bot.send_message(message.chat.id, "⚠️ <b>Пари не знайдено!</b>\nПереконайся, що розклад чітко видно.", parse_mode="HTML")
             return
 
         pair_idx = 0
@@ -304,11 +305,16 @@ def handle_photo(message):
 
 @bot.message_handler(content_types=["document"])
 def handle_document(message):
-    if message.chat.id == USER_CHAT_ID:
-        if message.document.mime_type and message.document.mime_type.startswith("image/"):
-            process_schedule_image(message, message.document.file_id)
-        else:
-            bot.reply_to(message, "⚠️ Надішли зображення (jpg/png) як файл без стиснення.")
+    if message.chat.id != USER_CHAT_ID:
+        return
+    
+    file_name = (message.document.file_name or "").lower()
+    mime = (message.document.mime_type or "").lower()
+
+    if mime.startswith("image/") or file_name.endswith((".png", ".jpg", ".jpeg", ".webp", ".heic")):
+        process_schedule_image(message, message.document.file_id)
+    else:
+        bot.reply_to(message, "⚠️ Будь ласка, надішли скріншот як фото або файл (JPG, PNG).")
 
 @bot.message_handler(commands=["start"])
 def cmd_start(message):
@@ -320,7 +326,7 @@ def cmd_start(message):
         "├ 🟠 /tomorrow — пари на завтра\n"
         "└ 🗓 /week — повний тиждень з посиланнями\n\n"
         "📸 <b>Оновлення розкладу:</b>\n"
-        "Надішли скріншот або <b>файл без стиснення</b> сюди в чат!\n"
+        "Просто надішли фото або файл розкладу в чат — бот розпізнає пари, видалить повідомлення та оновить сповіщення!\n"
         "━━━━━━━━━━━━━━━━━━━━"
     )
     bot.reply_to(message, start_text, parse_mode="HTML")
