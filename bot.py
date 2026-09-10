@@ -120,7 +120,7 @@ def handle_schedule_photo(message):
             files={"file": ("schedule.jpg", img_data)},
             data={
                 "apikey": OCR_API_KEY,
-                "language": "uk",
+                "language": "auto",
                 "isTable": True,
                 "OCREngine": 2
             },
