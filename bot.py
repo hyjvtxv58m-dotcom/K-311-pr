@@ -15,7 +15,6 @@ BOT_TOKEN = "8814170419:AAHWiLDlZEJ0KXeQzU_hVmQckRlsB6wRi8w"
 USER_CHAT_ID = 780458353
 OCR_API_KEY = "K86575271388957"
 
-# Сервер для Render
 class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -28,10 +27,9 @@ def run_http_server():
     server = HTTPServer(("0.0.0.0", port), SimpleHandler)
     server.serve_forever()
 
-# Твоя база предметов и преподавателей группы К-311
+# Каталог предметов
 SUBJECTS_DB = [
     {
-        "id": "iot",
         "title": "Інтернет речей та проектування розумного виробництва",
         "keywords": ["інтернет", "речей", "виробництв", "розумн", "захаренков"],
         "teacher": "Захаренков Д.Ю.",
@@ -39,15 +37,13 @@ SUBJECTS_DB = [
         "service": "Zoom"
     },
     {
-        "id": "db_gordienko",
         "title": "Організація та адміністрування баз даних",
-        "keywords": ["баз", "даних", "адмініструван", "гордієнко", "горд"],
+        "keywords": ["гордієнко", "горд"],
         "teacher": "Гордієнко І.М.",
         "link": "https://us04web.zoom.us/j/71992214760?pwd=i6KR9LbQYZx97lthUIZN8whASUGdO4.1",
         "service": "Zoom"
     },
     {
-        "id": "db_dovg",
         "title": "Організація та адміністрування баз даних",
         "keywords": ["довголуцький", "довгол"],
         "teacher": "Довголуцький І.Р.",
@@ -55,31 +51,27 @@ SUBJECTS_DB = [
         "service": "Meet"
     },
     {
-        "id": "networks_podv",
         "title": "Проектування автономних мереж",
-        "keywords": ["автоном", "подвиженко", "подв"],
+        "keywords": ["подвиженко", "подв"],
         "teacher": "Подвиженко А.В.",
         "link": "https://us02web.zoom.us/j/8110796424?pwd=Z9z6Xa7iRTX0wViW3xawnNEa2K2SaM.1",
         "service": "Zoom"
     },
     {
-        "id": "networks_litvin",
         "title": "Проектування автономних мереж",
-        "keywords": ["автоном", "мереж", "литвин"],
+        "keywords": ["автоном", "литвин"],
         "teacher": "Литвин Д.Т.",
         "link": "https://meet.google.com/ait-gnuz-oqo",
         "service": "Meet"
     },
     {
-        "id": "graphics_bukatov",
         "title": "Комп'ютерна графіка",
-        "keywords": ["графік", "букатов"],
+        "keywords": ["букатов"],
         "teacher": "Букатов Д.В.",
         "link": "https://us04web.zoom.us/j/6128385015?pwd=VqXYvANnVG11TCp_xzdzOGtRwnQmzk.1",
         "service": "Zoom"
     },
     {
-        "id": "graphics_litvin",
         "title": "Комп'ютерна графіка",
         "keywords": ["графік", "литвин"],
         "teacher": "Литвин Д.Т.",
@@ -87,7 +79,6 @@ SUBJECTS_DB = [
         "service": "Meet"
     },
     {
-        "id": "media",
         "title": "Розробка інтерактивного медіа",
         "keywords": ["інтерактив", "медіа", "бойко"],
         "teacher": "Бойко М.М.",
@@ -95,7 +86,6 @@ SUBJECTS_DB = [
         "service": "Zoom"
     },
     {
-        "id": "analytics",
         "title": "ІТ та бізнес-аналітика",
         "keywords": ["аналітик", "бізнес", "іт та"],
         "teacher": "Букатов Д.В.",
@@ -103,20 +93,25 @@ SUBJECTS_DB = [
         "service": "Zoom"
     },
     {
-        "id": "oop_yarovoy",
         "title": "Об'єктно-орієнтоване програмування",
-        "keywords": ["об'єктн", "ооп", "яровий", "яров"],
+        "keywords": ["яровий", "яров"],
         "teacher": "Яровий Р.О.",
         "link": "https://us02web.zoom.us/j/2589993020?pwd=bU9RUk50TVk5TDJxL1lvbXoxNmtrQT09",
         "service": "Zoom"
     },
     {
-        "id": "comp_networks",
         "title": "Комп'ютерні мережі",
-        "keywords": ["комп'ютерні мережі", "мережі", "левченко"],
+        "keywords": ["левченко"],
         "teacher": "Левченко С.В.",
         "link": "https://us02web.zoom.us/j/4717138521?pwd=eFI0SEdMN3NxQkNBWGlMNVl3WjB5Zz09",
         "service": "Zoom"
+    },
+    {
+        "title": "Комп'ютерні мережі",
+        "keywords": ["мережі", "литвин"],
+        "teacher": "Литвин Д.Т.",
+        "link": "https://meet.google.com/ait-gnuz-oqo",
+        "service": "Meet"
     }
 ]
 
@@ -128,12 +123,38 @@ DAYS_MAP = {
     4: "Пʼятниця",
 }
 
-CALL_TIMES = [
-    {"hour": 9, "minute": 15, "time": "09:15 - 10:30"},
-    {"hour": 10, "minute": 40, "time": "10:40 - 11:55"},
-    {"hour": 12, "minute": 20, "time": "12:20 - 13:35"},
-    {"hour": 13, "minute": 45, "time": "13:45 - 15:00"},
-]
+# Шаблоны звонков для каждого дня в твоем расписании:
+# Пн: 2, 3, 4 пары (с 10:40)
+# Вт: 1, 2 пары (с 09:15)
+# Ср: 1, 2, 3 пары
+# Чт: 1, 2, 3 пары
+# Пт: 1, 2, 3 пары
+DAY_SLOTS = {
+    0: [
+        {"hour": 10, "minute": 40, "time": "10:40 - 11:55"},
+        {"hour": 12, "minute": 20, "time": "12:20 - 13:35"},
+        {"hour": 13, "minute": 45, "time": "13:45 - 15:00"},
+    ],
+    1: [
+        {"hour": 9,  "minute": 15, "time": "09:15 - 10:30"},
+        {"hour": 10, "minute": 40, "time": "10:40 - 11:55"},
+    ],
+    2: [
+        {"hour": 9,  "minute": 15, "time": "09:15 - 10:30"},
+        {"hour": 10, "minute": 40, "time": "10:40 - 11:55"},
+        {"hour": 12, "minute": 20, "time": "12:20 - 13:35"},
+    ],
+    3: [
+        {"hour": 9,  "minute": 15, "time": "09:15 - 10:30"},
+        {"hour": 10, "minute": 40, "time": "10:40 - 11:55"},
+        {"hour": 12, "minute": 20, "time": "12:20 - 13:35"},
+    ],
+    4: [
+        {"hour": 9,  "minute": 15, "time": "09:15 - 10:30"},
+        {"hour": 10, "minute": 40, "time": "10:40 - 11:55"},
+        {"hour": 12, "minute": 20, "time": "12:20 - 13:35"},
+    ]
+}
 
 SCHEDULE_DATA = {
     0: [
@@ -221,7 +242,7 @@ def setup_scheduler():
             )
 
 def parse_and_update(message, file_id):
-    temp_msg = bot.reply_to(message, "⏳ <b>Оновлюю розклад зі скріншота...</b>", parse_mode="HTML")
+    temp_msg = bot.reply_to(message, "⏳ <b>Оновлюю розклад...</b>", parse_mode="HTML")
     try:
         f_info = bot.get_file(file_id)
         img_bytes = requests.get(f"https://api.telegram.org/file/bot{BOT_TOKEN}/{f_info.file_path}").content
@@ -235,7 +256,7 @@ def parse_and_update(message, file_id):
             "https://api.ocr.space/parse/image",
             files={"file": ("img.jpg", img_bytes)},
             data={"apikey": OCR_API_KEY, "language": "auto", "isTable": True, "OCREngine": 2},
-            timeout=45
+            timeout=50
         ).json()
 
         try:
@@ -250,22 +271,23 @@ def parse_and_update(message, file_id):
         text = res["ParsedResults"][0]["ParsedText"]
         raw_lines = [l.strip() for l in text.splitlines() if l.strip()]
 
+        # Разрешаем повторы дисциплин (не удаляем одинаковые предметы)
         found_pairs = []
         for line in raw_lines:
             matched = match_subject_from_raw(line)
-            if matched and matched["title"] not in [p["title"] for p in found_pairs]:
+            if matched:
                 found_pairs.append(matched)
 
         if not found_pairs:
             bot.send_message(message.chat.id, "⚠️ Пари не розпізнано. Спробуй надіслати скріншот як фото без стиснення.")
             return
 
-        # Раскладываем найденные пары по дням (3-2-3-3-3)
+        # Раскладываем по дням с учётом правильных слотов (Пн с 10:40, Вт 2 пары, остальные по 3)
         idx = 0
         for day_i in range(5):
             SCHEDULE_DATA[day_i] = []
-            slot_limit = 2 if day_i == 1 else 3
-            for slot in CALL_TIMES[:slot_limit]:
+            slots = DAY_SLOTS[day_i]
+            for slot in slots:
                 if idx < len(found_pairs):
                     pair = found_pairs[idx]
                     SCHEDULE_DATA[day_i].append({
@@ -284,8 +306,8 @@ def parse_and_update(message, file_id):
             message.chat.id,
             f"✨ <b>РОЗКЛАД ОНОВЛЕНО!</b> ✨\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"🎯 <b>Розпізнано пар:</b> <code>{len(found_pairs)}</code>\n"
-            f"🔔 Нагадування переналаштовано.\n"
+            f"🎯 <b>Розпізнано пар:</b> <code>{len(found_pairs)}</code> із 14\n"
+            f"🔔 Нагадування налаштовано під офіційний розклад.\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"Переглянути: /week",
             parse_mode="HTML"
